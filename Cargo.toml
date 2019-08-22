@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1"
+arrayvec = "*"
 

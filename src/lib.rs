@@ -1,3 +1,4 @@
+extern crate arrayvec;
 extern crate bitflags;
 
 use std::error::Error;
@@ -7,6 +8,7 @@ pub mod ethernet;
 pub mod icmp;
 pub mod ip;
 pub mod net;
+pub mod raw;
 pub mod slip;
 pub mod tcp;
 pub mod udp;

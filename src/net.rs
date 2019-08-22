@@ -1,6 +1,8 @@
 use bitflags::bitflags;
 use std::error::Error;
 
+use crate::raw;
+
 pub struct Net {
     devices: Vec<Device>,
     drivers: Vec<DeviceDriver>,
@@ -27,19 +29,19 @@ bitflags! {
 }
 
 pub struct Device {
-    interfaces: Vec<Interface>,
-    name: String,
-    type_: DeviceType,
-    mtu: u16,
-    flags: DeviceFlags,
-    hlen: u16,
-    alen: u16,
-    addr: [u8; 16],
-    peer: [u8; 16],
-    broadcast: [u8; 16],
-    rx_handler: fn(&mut Net, &Device, DeviceProtoType, &Vec<u8>, usize),
-    ops: DeviceOps,
-    r#priv: Box<u8>,
+    pub interfaces: Vec<Interface>,
+    pub name: String,
+    pub type_: DeviceType,
+    pub mtu: u16,
+    pub flags: DeviceFlags,
+    pub hlen: u16,
+    pub alen: u16,
+    pub addr: [u8; 16],
+    pub peer: [u8; 16],
+    pub broadcast: [u8; 16],
+    pub rx_handler: fn(&mut Net, &Device, DeviceProtoType, &Vec<u8>, usize),
+    pub ops: DeviceOps,
+    pub r#priv: Box<u8>,
 }
 
 impl Device {
@@ -75,7 +77,7 @@ pub struct Interface {
 
 #[derive(Clone, Copy)]
 pub struct DeviceOps {
-    pub open: fn(&Device, i32) -> Result<(), Box<dyn Error>>,
+    pub open: fn(&Device, raw::Type) -> Result<(), Box<dyn Error>>,
     pub close: fn(&Device) -> Result<(), Box<dyn Error>>,
     pub run: fn(&Device) -> Result<(), Box<dyn Error>>,
     pub stop: fn(&Device) -> Result<(), Box<dyn Error>>,
@@ -128,10 +130,17 @@ impl Net {
         Ok(())
     }
 
-    pub fn alloc(&mut self, type_: DeviceType) -> Option<&Device> {
-        let driver = self.drivers.iter().find(|driver| driver.type_ == type_)?;
+    pub fn alloc(&mut self, type_: DeviceType) {
+        let driver = self
+            .drivers
+            .iter()
+            .find(|driver| driver.type_ == type_)
+            .unwrap();
         self.devices.push(Device::from_driver(driver));
-        self.devices.last()
+    }
+
+    pub fn last_device_mut(&mut self) -> Option<&mut Device> {
+        self.devices.last_mut()
     }
 }
 

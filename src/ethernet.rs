@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::net;
+use crate::{net, raw, util};
 
 pub const ADDR_LEN: u16 = 6;
 pub const ADDR_STR_LEN: usize = 18;
@@ -12,7 +12,7 @@ pub const FRAME_SIZE_MAX: u16 = 1518;
 pub const PAYLOAD_SIZE_MIN: u16 = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
 pub const PAYLOAD_SIZE_MAX: u16 = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
-fn open(dev: &net::Device, opt: i32) -> Result<(), Box<dyn Error>> {
+fn open(dev: &net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> {
     unimplemented!()
 }
 
@@ -29,11 +29,11 @@ fn stop(dev: &net::Device) -> Result<(), Box<dyn Error>> {
 }
 
 fn tx(
-    dev: &net::Device,
-    type_: u16,
-    payload: &Vec<u8>,
-    plen: usize,
-    dst: &Vec<u8>,
+    _dev: &net::Device,
+    _type_: u16,
+    _payload: &Vec<u8>,
+    _plen: usize,
+    _dst: &Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
     unimplemented!()
 }
@@ -57,4 +57,13 @@ const ETHERNET_DEF: net::DeviceDriver = net::DeviceDriver {
 
 pub fn init(net: &mut net::Net) -> Result<(), Box<dyn Error>> {
     net.regist_driver(ETHERNET_DEF)
+}
+
+pub fn addr_pton(p: &String) -> Result<[u8; 16], util::RuntimeError> {
+    use arrayvec::ArrayVec;
+    p.split(':')
+        .map(|n| u8::from_str_radix(n, 16))
+        .collect::<Result<ArrayVec<[_; 16]>, _>>()
+        .map(|arr| arr.into_inner().unwrap())
+        .map_err(|err| util::RuntimeError::new(format!("{}", err)))
 }
