@@ -1,5 +1,7 @@
 extern crate microps_rs;
 
+use microps_rs::{ethernet, net};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Interface(String);
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +61,12 @@ fn parse_args() -> Args {
 fn main() {
     let args = parse_args();
     println!("{:?}", args);
-    let _microps = microps_rs::Microps::new().unwrap();
+    let microps = microps_rs::Microps::new().unwrap();
+    let mut dev = microps.net.alloc(net::Type::Ethernet).unwrap();
+    dev.name = args.interface;
+    if let Some(Hwaddr(hwaddr)) = args.hwaddr {
+        ethernet::addr_pton(hwaddr, dev.addr);
+    }
     // TODO
     unimplemented!()
 }
