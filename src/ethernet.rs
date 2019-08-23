@@ -1,8 +1,9 @@
 use std::error::Error;
+use std::thread::{self, ThreadId};
 
 use crate::{net, raw, util};
 
-pub const ADDR_LEN: u16 = 6;
+pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
 
 pub const HDR_SIZE: u16 = 14;
@@ -12,8 +13,30 @@ pub const FRAME_SIZE_MAX: u16 = 1518;
 pub const PAYLOAD_SIZE_MIN: u16 = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
 pub const PAYLOAD_SIZE_MAX: u16 = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
-fn open(dev: &net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
+const ADDR_ANY: [u8; ADDR_LEN] = [0; ADDR_LEN];
+const ADDR_BROADCAST: [u8; ADDR_LEN] = [255; ADDR_LEN];
+
+struct Data {
+    // pub device: net::Device,
+    // pub raw: raw::RawDevice,
+    pub thread: ThreadId,
+    pub terminate: bool,
+}
+
+fn open(device: &mut net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> {
+    let raw = raw::alloc(opt, &device.name);
+    (raw.ops.open)(&raw)?;
+    device.data = Box::new(Data {
+        // device: device,
+        // raw: &raw,
+        thread: thread::current().id(),
+        terminate: false,
+    });
+    if device.addr == ADDR_ANY {
+        (raw.ops.addr)(&raw, &device.addr, ADDR_LEN)?;
+    }
+    device.broadcast = ADDR_BROADCAST;
+    Ok(())
 }
 
 fn close(dev: &net::Device) -> Result<(), Box<dyn Error>> {
@@ -59,11 +82,12 @@ pub fn init(net: &mut net::Net) -> Result<(), Box<dyn Error>> {
     net.regist_driver(ETHERNET_DEF)
 }
 
-pub fn addr_pton(p: &String) -> Result<[u8; 16], util::RuntimeError> {
+pub fn addr_pton(p: &String) -> Result<[u8; ADDR_LEN], util::RuntimeError> {
     use arrayvec::ArrayVec;
+    use std::convert::TryInto;
     p.split(':')
-        .map(|n| u8::from_str_radix(n, 16))
-        .collect::<Result<ArrayVec<[_; 16]>, _>>()
+        .map(|n| u8::from_str_radix(n, ADDR_LEN.try_into().unwrap()))
+        .collect::<Result<ArrayVec<[_; ADDR_LEN]>, _>>()
         .map(|arr| arr.into_inner().unwrap())
         .map_err(|err| util::RuntimeError::new(format!("{}", err)))
 }

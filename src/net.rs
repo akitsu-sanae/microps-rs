@@ -1,6 +1,8 @@
 use bitflags::bitflags;
+use std::any::Any;
 use std::error::Error;
 
+use crate::ethernet;
 use crate::raw;
 
 pub struct Net {
@@ -35,13 +37,13 @@ pub struct Device {
     pub mtu: u16,
     pub flags: DeviceFlags,
     pub hlen: u16,
-    pub alen: u16,
-    pub addr: [u8; 16],
-    pub peer: [u8; 16],
-    pub broadcast: [u8; 16],
+    pub alen: usize,
+    pub addr: [u8; ethernet::ADDR_LEN],
+    pub peer: [u8; ethernet::ADDR_LEN],
+    pub broadcast: [u8; ethernet::ADDR_LEN],
     pub rx_handler: fn(&mut Net, &Device, DeviceProtoType, &Vec<u8>, usize),
     pub ops: DeviceOps,
-    pub r#priv: Box<u8>,
+    pub data: Box<dyn Any>,
 }
 
 impl Device {
@@ -54,12 +56,12 @@ impl Device {
             flags: driver.flags,
             hlen: driver.hlen,
             alen: driver.alen,
-            addr: [0; 16],
-            peer: [0; 16],
-            broadcast: [0; 16],
+            addr: [0; ethernet::ADDR_LEN],
+            peer: [0; ethernet::ADDR_LEN],
+            broadcast: [0; ethernet::ADDR_LEN],
             rx_handler: rx_handler,
             ops: driver.ops,
-            r#priv: Box::new(0),
+            data: Box::new(0),
         }
     }
 }
@@ -77,7 +79,7 @@ pub struct Interface {
 
 #[derive(Clone, Copy)]
 pub struct DeviceOps {
-    pub open: fn(&Device, raw::Type) -> Result<(), Box<dyn Error>>,
+    pub open: fn(&mut Device, raw::Type) -> Result<(), Box<dyn Error>>,
     pub close: fn(&Device) -> Result<(), Box<dyn Error>>,
     pub run: fn(&Device) -> Result<(), Box<dyn Error>>,
     pub stop: fn(&Device) -> Result<(), Box<dyn Error>>,
@@ -89,7 +91,7 @@ pub struct DeviceDriver {
     pub mtu: u16,
     pub flags: DeviceFlags,
     pub hlen: u16,
-    pub alen: u16,
+    pub alen: usize,
     pub ops: DeviceOps,
 }
 
