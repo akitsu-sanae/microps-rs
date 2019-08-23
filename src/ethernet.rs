@@ -18,22 +18,22 @@ const ADDR_BROADCAST: [u8; ADDR_LEN] = [255; ADDR_LEN];
 
 struct Data {
     // pub device: net::Device,
-    // pub raw: raw::RawDevice,
+    // pub raw_device: raw::RawDevice,
     pub thread: ThreadId,
     pub terminate: bool,
 }
 
 fn open(device: &mut net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> {
-    let raw = raw::alloc(opt, &device.name);
-    (raw.ops.open)(&raw)?;
+    let raw_device = raw::alloc(opt, &device.name);
+    (raw_device.ops.open)(&raw_device)?;
     device.data = Box::new(Data {
         // device: device,
-        // raw: &raw,
+        // raw_device: &raw_device,
         thread: thread::current().id(),
         terminate: false,
     });
     if device.addr == ADDR_ANY {
-        (raw.ops.addr)(&raw, &device.addr, ADDR_LEN)?;
+        (raw_device.ops.addr)(&raw_device, &device.addr, ADDR_LEN)?;
     }
     device.broadcast = ADDR_BROADCAST;
     Ok(())

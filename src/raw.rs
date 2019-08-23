@@ -2,12 +2,16 @@ use crate::ethernet::ADDR_LEN;
 use std::any::Any;
 use std::error::Error;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Auto,
     Tap,
     Socket,
     Bpf,
 }
+
+// assume as HAVE_PF_PACKET
+const DEFAULT_TYPE: Type = Type::Socket;
 
 pub struct RawDeviceOps {
     pub open: fn(&RawDevice) -> Result<(), Box<dyn Error>>,
@@ -24,6 +28,30 @@ pub struct RawDevice {
     data: Box<dyn Any>,
 }
 
-pub fn alloc(type_: Type, name: &str) -> RawDevice {
-    unimplemented!()
+fn detect_type(name: &str) -> Type {
+    match name {
+        "tap" => Type::Tap,
+        _ => DEFAULT_TYPE,
+    }
+}
+
+pub fn alloc(mut type_: Type, name: &str) -> RawDevice {
+    if type_ == Type::Auto {
+        type_ = match name {
+            "tap" => Type::Tap,
+            _ => DEFAULT_TYPE,
+        }
+    }
+    let ops = match type_ {
+        Type::Auto => unreachable!(),
+        Type::Tap => unimplemented!(),
+        Type::Socket => unimplemented!(),
+        Type::Bpf => unimplemented!(),
+    };
+    RawDevice {
+        type_: type_,
+        name: name.to_string(),
+        ops: ops,
+        data: Box::new(()),
+    }
 }
