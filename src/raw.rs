@@ -1,13 +1,18 @@
 use crate::ethernet::ADDR_LEN;
+use libc::{c_char, c_ulong};
 use std::any::Any;
 use std::error::Error;
+
+pub mod socket;
+pub mod tap;
+// pub mod bpf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Auto,
     Tap,
     Socket,
-    Bpf,
+    // Bpf,
 }
 
 // assume as HAVE_PF_PACKET
@@ -28,13 +33,6 @@ pub struct RawDevice {
     data: Box<dyn Any>,
 }
 
-fn detect_type(name: &str) -> Type {
-    match name {
-        "tap" => Type::Tap,
-        _ => DEFAULT_TYPE,
-    }
-}
-
 pub fn alloc(mut type_: Type, name: &str) -> RawDevice {
     if type_ == Type::Auto {
         type_ = match name {
@@ -46,12 +44,28 @@ pub fn alloc(mut type_: Type, name: &str) -> RawDevice {
         Type::Auto => unreachable!(),
         Type::Tap => unimplemented!(),
         Type::Socket => unimplemented!(),
-        Type::Bpf => unimplemented!(),
+        // Type::Bpf => unimplemented!(),
     };
     RawDevice {
         type_: type_,
         name: name.to_string(),
         ops: ops,
         data: Box::new(()),
+    }
+}
+
+pub const TUNSETIFF: c_ulong = 1074025674;
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct ifreq {
+    pub ifname: [c_char; 16],
+    pub ifr_flags: i32,
+    pub padding: [u8; 12],
+}
+
+impl Default for ifreq {
+    fn default() -> ifreq {
+        unsafe { std::mem::zeroed() }
     }
 }

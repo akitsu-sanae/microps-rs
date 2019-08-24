@@ -1,5 +1,7 @@
 extern crate arrayvec;
 extern crate bitflags;
+extern crate libc;
+extern crate nix;
 
 use std::error::Error;
 

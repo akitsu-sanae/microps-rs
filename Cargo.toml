@@ -9,4 +9,6 @@ edition = "2018"
 [dependencies]
 bitflags = "1"
 arrayvec = "*"
+nix = "0.15"
+libc = "0.2"
 
