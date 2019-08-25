@@ -1,5 +1,6 @@
 extern crate arrayvec;
 extern crate bitflags;
+extern crate ifstructs;
 extern crate libc;
 extern crate nix;
 

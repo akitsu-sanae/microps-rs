@@ -11,4 +11,5 @@ bitflags = "1"
 arrayvec = "*"
 nix = "0.15"
 libc = "0.2"
+ifstructs = "0.1"
 

@@ -1,5 +1,5 @@
 use crate::ethernet::ADDR_LEN;
-use libc::{c_char, c_ulong};
+use libc::c_ulong;
 use std::any::Any;
 use std::error::Error;
 
@@ -55,17 +55,3 @@ pub fn alloc(mut type_: Type, name: &str) -> RawDevice {
 }
 
 pub const TUNSETIFF: c_ulong = 1074025674;
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct ifreq {
-    pub ifname: [c_char; 16],
-    pub ifr_flags: i32,
-    pub padding: [u8; 12],
-}
-
-impl Default for ifreq {
-    fn default() -> ifreq {
-        unsafe { std::mem::zeroed() }
-    }
-}
