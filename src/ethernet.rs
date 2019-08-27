@@ -24,8 +24,7 @@ struct Data {
 }
 
 fn open(device: &mut net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> {
-    let raw_device = raw::alloc(opt, &device.name);
-    (raw_device.ops.open)(&raw_device)?;
+    let raw_device = raw::open(opt, device.name.as_str());
     device.data = Box::new(Data {
         // device: device,
         // raw_device: &raw_device,
@@ -33,7 +32,7 @@ fn open(device: &mut net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> 
         terminate: false,
     });
     if device.addr == ADDR_ANY {
-        (raw_device.ops.addr)(&raw_device, &device.addr, ADDR_LEN)?;
+        device.addr = raw_device.addr()?;
     }
     device.broadcast = ADDR_BROADCAST;
     Ok(())

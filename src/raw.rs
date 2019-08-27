@@ -1,6 +1,5 @@
 use crate::ethernet::ADDR_LEN;
 use libc::c_ulong;
-use std::any::Any;
 use std::error::Error;
 
 pub mod socket;
@@ -18,39 +17,28 @@ pub enum Type {
 // assume as HAVE_PF_PACKET
 const DEFAULT_TYPE: Type = Type::Socket;
 
-pub struct RawDeviceOps {
-    pub open: fn(&RawDevice) -> Result<(), Box<dyn Error>>,
-    pub close: fn(&RawDevice) -> Result<(), Box<dyn Error>>,
-    pub rx: fn(&RawDevice, fn(&Vec<u8>, usize, &Vec<u8>), &Vec<u8>, i32),
-    pub tx: fn(&RawDevice, buf: &Vec<u8>, len: usize) -> isize,
-    pub addr: fn(&RawDevice, dst: &[u8; ADDR_LEN], usize) -> Result<(), Box<dyn Error>>,
+pub trait RawDevice {
+    fn close(&mut self) -> Result<(), Box<dyn Error>>;
+    fn rx(&mut self, callback: fn(&Vec<u8>, usize, &Vec<u8>), arg: &Vec<u8>, timeout: i32);
+    fn tx(&mut self, buf: &Vec<u8>) -> isize;
+    fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>>;
+
+    fn type_(&self) -> Type;
+    fn name(&self) -> &String;
 }
 
-pub struct RawDevice {
-    pub type_: Type,
-    pub name: String,
-    pub ops: RawDeviceOps,
-    data: Box<dyn Any>,
-}
-
-pub fn alloc(mut type_: Type, name: &str) -> RawDevice {
+pub fn open(mut type_: Type, name: &str) -> Box<dyn RawDevice> {
     if type_ == Type::Auto {
         type_ = match name {
             "tap" => Type::Tap,
             _ => DEFAULT_TYPE,
         }
     }
-    let ops = match type_ {
+    match type_ {
         Type::Auto => unreachable!(),
-        Type::Tap => unimplemented!(),
-        Type::Socket => unimplemented!(),
+        Type::Tap => tap::TapDevice::open(name).unwrap(),
+        Type::Socket => socket::SocketDevice::open(name).unwrap(),
         // Type::Bpf => unimplemented!(),
-    };
-    RawDevice {
-        type_: type_,
-        name: name.to_string(),
-        ops: ops,
-        data: Box::new(()),
     }
 }
 
