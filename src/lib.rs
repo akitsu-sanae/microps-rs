@@ -2,6 +2,8 @@ extern crate arrayvec;
 extern crate bitflags;
 extern crate ifstructs;
 extern crate libc;
+
+#[macro_use]
 extern crate nix;
 
 use std::error::Error;

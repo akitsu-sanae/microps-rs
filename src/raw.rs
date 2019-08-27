@@ -21,10 +21,10 @@ pub trait RawDevice {
     fn close(&mut self) -> Result<(), Box<dyn Error>>;
     fn rx(&mut self, callback: fn(&Vec<u8>, usize, &Vec<u8>), arg: &Vec<u8>, timeout: i32);
     fn tx(&mut self, buf: &Vec<u8>) -> isize;
-    fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>>;
 
     fn type_(&self) -> Type;
     fn name(&self) -> &String;
+    fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>>;
 }
 
 pub fn open(mut type_: Type, name: &str) -> Box<dyn RawDevice> {
@@ -42,4 +42,3 @@ pub fn open(mut type_: Type, name: &str) -> Box<dyn RawDevice> {
     }
 }
 
-pub const TUNSETIFF: c_ulong = 1074025674;
