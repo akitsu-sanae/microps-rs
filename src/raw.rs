@@ -1,5 +1,4 @@
 use crate::ethernet::ADDR_LEN;
-use libc::c_ulong;
 use std::error::Error;
 
 pub mod socket;

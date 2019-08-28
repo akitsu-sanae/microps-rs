@@ -2,9 +2,9 @@ use super::{RawDevice, Type};
 use crate::util::RuntimeError;
 use ifstructs::ifreq;
 use libc::{self, pollfd, IFF_NO_PI, IFF_TAP, POLLIN};
-use nix::{fcntl, sys::stat::Mode, unistd, ioctl_write_int};
+use nix::{fcntl, sys::stat::Mode, unistd};
 use std::error::Error;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use crate::ethernet::ADDR_LEN;
 
 ioctl_write_ptr!(tun_set_iff, 'T', 202, libc::c_int);
@@ -88,7 +88,7 @@ impl RawDevice for TapDevice {
         };
         match unsafe { libc::poll(&mut pfd, 1, timeout) } {
             0 => return,
-            -1 => eprintln!("poll"),
+            -1 => eprintln!("poll"), // catch EINTR case
             _ => (),
         }
         let mut buf = vec![];

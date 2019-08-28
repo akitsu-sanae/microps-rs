@@ -27,6 +27,10 @@ impl Error for RuntimeError {
     }
 }
 
-pub fn hton16(h: usize) -> usize {
-    unimplemented!()
+pub fn htons(n: u16) -> u16 {
+    n.to_be()
 }
+pub fn ntohs(n: u16) -> u16 {
+    u16::from_be(n)
+}
+
