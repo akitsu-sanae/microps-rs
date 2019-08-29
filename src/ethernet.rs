@@ -38,15 +38,15 @@ fn open(device: &mut net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-fn close(dev: &net::Device) -> Result<(), Box<dyn Error>> {
+fn close(_dev: &net::Device) -> Result<(), Box<dyn Error>> {
     unimplemented!()
 }
 
-fn run(dev: &net::Device) -> Result<(), Box<dyn Error>> {
+fn run(_dev: &net::Device) -> Result<(), Box<dyn Error>> {
     unimplemented!()
 }
 
-fn stop(dev: &net::Device) -> Result<(), Box<dyn Error>> {
+fn stop(_dev: &net::Device) -> Result<(), Box<dyn Error>> {
     unimplemented!()
 }
 

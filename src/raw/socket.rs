@@ -4,9 +4,7 @@ use crate::util::*;
 use ifstructs::ifreq;
 use libc::{self, pollfd, ETH_P_ALL, POLLIN};
 use nix::{
-    sys::socket::{
-        bind, socket, AddressFamily, LinkAddr, SockAddr, SockFlag, SockProtocol, SockType,
-    },
+    sys::socket::{bind, socket, AddressFamily, LinkAddr, SockAddr, SockFlag, SockType},
     unistd,
 };
 use std::convert::TryInto;
@@ -23,7 +21,6 @@ pub struct SocketDevice {
 
 impl SocketDevice {
     pub fn open(name: &str) -> Result<Box<dyn RawDevice>, Box<dyn Error>> {
-        use std::convert::TryInto;
         let mut device = SocketDevice {
             fd: socket(
                 AddressFamily::Packet,
@@ -34,12 +31,12 @@ impl SocketDevice {
             name: name.to_string(),
         };
         if device.fd == -1 {
-            device.close();
+            device.close()?;
             return Err(Box::new(RuntimeError::new("socket failed".to_string())));
         }
         let mut ifr = ifreq::from_name(name)?;
         if let Err(err) = unsafe { get_iface_index(device.fd, &mut ifr) } {
-            device.close();
+            device.close()?;
             return Err(Box::new(err));
             // return Err(Box::new(RuntimeError::new("ioctl [SIOCGIFINDEX]".to_string())));
         }
@@ -53,18 +50,18 @@ impl SocketDevice {
             sll_addr: [0; 8],
         }));
         if let Err(err) = bind(device.fd, &socket_addr) {
-            device.close();
+            device.close()?;
             return Err(Box::new(err));
         }
         if let Err(err) = unsafe { get_iface_flags(device.fd, &mut ifr) } {
-            device.close();
+            device.close()?;
             return Err(Box::new(err));
         }
         unsafe {
             ifr.ifr_ifru.ifr_flags = ifr.ifr_ifru.ifr_flags | (libc::IFF_PROMISC as i16);
         }
         if let Err(err) = unsafe { get_iface_flags(device.fd, &mut ifr) } {
-            device.close();
+            device.close()?;
             return Err(Box::new(err));
         }
         Ok(Box::new(device))
@@ -86,21 +83,15 @@ impl RawDevice for SocketDevice {
             None,
         )?;
         let mut ifr = ifreq::from_name(self.name.as_str())?;
-        unsafe {
-            ifr.ifr_ifru.ifr_addr.sa_family = libc::AF_INET.try_into().unwrap();
-        }
+        ifr.ifr_ifru.ifr_addr.sa_family = libc::AF_INET.try_into().unwrap();
         if let Err(err) = unsafe { get_hwaddr(fd, &mut ifr) } {
-            unsafe {
-                unistd::close(fd)?;
-            }
+            unistd::close(fd)?;
             Err(Box::new(err))
         } else {
             let addr = unsafe { ifr.ifr_ifru.ifr_hwaddr.sa_data };
             let addr =
                 unsafe { &*(addr.as_ptr() as *const [i8; ADDR_LEN] as *const [u8; ADDR_LEN]) };
-            unsafe {
-                libc::close(fd);
-            }
+            unistd::close(fd)?;
             Ok(*addr)
         }
     }
@@ -140,7 +131,7 @@ impl RawDevice for SocketDevice {
         callback(&buf, len, arg);
     }
 
-    fn tx(&mut self, buf: &Vec<u8>) -> isize {
+    fn tx(&mut self, _buf: &Vec<u8>) -> isize {
         unimplemented!()
     }
 }
