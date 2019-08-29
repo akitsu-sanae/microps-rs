@@ -1,11 +1,11 @@
 use super::{RawDevice, Type};
+use crate::ethernet::ADDR_LEN;
 use crate::util::RuntimeError;
 use ifstructs::ifreq;
 use libc::{self, pollfd, IFF_NO_PI, IFF_TAP, POLLIN};
 use nix::{fcntl, sys::stat::Mode, unistd};
 use std::error::Error;
 use std::os::unix::io::RawFd;
-use crate::ethernet::ADDR_LEN;
 
 ioctl_write_ptr!(tun_set_iff, 'T', 202, libc::c_int);
 
@@ -24,16 +24,16 @@ impl TapDevice {
         if device.fd == -1 {
             device.close().unwrap();
             return Err(Box::new(RuntimeError::new(format!(
-                            "can not open : {}",
-                            name
+                "can not open : {}",
+                name
             ))));
         }
         let mut ifr = ifreq::from_name(name)?;
         ifr.set_flags(IFF_TAP as i16 | IFF_NO_PI as i16);
 
         unsafe { tun_set_iff(device.fd, &mut ifr as *mut _ as *mut _) }?;
-            // device.close().unwrap();
-            //
+        // device.close().unwrap();
+        //
         Ok(Box::new(device))
     }
 }
@@ -63,7 +63,7 @@ impl RawDevice for TapDevice {
                 libc::close(socket);
             }
             return Err(Box::new(RuntimeError::new(
-                        "ioctl [SIOCGIFHWADDR]".to_string(),
+                "ioctl [SIOCGIFHWADDR]".to_string(),
             )));
         }
         let addr = unsafe { ifr.ifr_ifru.ifr_hwaddr.sa_data };
@@ -94,23 +94,21 @@ impl RawDevice for TapDevice {
         let mut buf = vec![];
         buf.resize(2048, 0);
         use std::convert::TryInto;
-        let len: usize =
-            match unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) } {
-                0 => return,
-                -1 => {
-                    eprintln!("read");
-                    return;
-                }
-                len => len,
+        let len: usize = match unsafe {
+            libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+        } {
+            0 => return,
+            -1 => {
+                eprintln!("read");
+                return;
             }
+            len => len,
+        }
         .try_into()
-            .unwrap();
+        .unwrap();
         callback(&buf, len, arg);
     }
     fn tx(&mut self, buf: &Vec<u8>) -> isize {
-        unsafe {
-            libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len())
-        }
+        unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) }
     }
 }
-

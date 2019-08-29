@@ -1,8 +1,11 @@
-extern crate microps_rs;
 extern crate ctrlc;
+extern crate microps_rs;
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use microps_rs::raw::tap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 fn main() {
     let terminate = Arc::new(AtomicBool::new(false));
@@ -10,7 +13,8 @@ fn main() {
 
     ctrlc::set_handler(move || {
         t.store(true, Ordering::SeqCst);
-    }).expect("failed: set Ctrl-C handler");
+    })
+    .expect("failed: set Ctrl-C handler");
 
     let args: Vec<String> = ::std::env::args().into_iter().collect();
     if args.len() != 2 {
@@ -20,9 +24,13 @@ fn main() {
     eprintln!("[{}] {:?}", device.name(), device.addr());
 
     while !terminate.load(Ordering::SeqCst) {
-        device.rx(|_frame: &Vec<u8>, len: usize, _arg: &Vec<u8>| {
-            println!("receive {} octets", len);
-        }, &vec![], 1000);
+        device.rx(
+            |_frame: &Vec<u8>, len: usize, _arg: &Vec<u8>| {
+                println!("receive {} octets", len);
+            },
+            &vec![],
+            1000,
+        );
     }
     device.close();
 }

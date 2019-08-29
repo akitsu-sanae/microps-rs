@@ -33,4 +33,3 @@ pub fn htons(n: u16) -> u16 {
 pub fn ntohs(n: u16) -> u16 {
     u16::from_be(n)
 }
-

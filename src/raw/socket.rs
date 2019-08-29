@@ -1,11 +1,16 @@
 use super::{RawDevice, Type};
-use std::convert::TryInto;
+use crate::ethernet::ADDR_LEN;
 use crate::util::*;
 use ifstructs::ifreq;
-use libc::{self, pollfd, POLLIN, ETH_P_ALL};
-use nix::{sys::socket::{socket, bind, AddressFamily, SockAddr, LinkAddr, SockType, SockFlag, SockProtocol}, unistd};
+use libc::{self, pollfd, ETH_P_ALL, POLLIN};
+use nix::{
+    sys::socket::{
+        bind, socket, AddressFamily, LinkAddr, SockAddr, SockFlag, SockProtocol, SockType,
+    },
+    unistd,
+};
+use std::convert::TryInto;
 use std::error::Error;
-use crate::ethernet::ADDR_LEN;
 
 ioctl_readwrite_bad!(get_iface_index, 0x8933, ifreq);
 ioctl_readwrite_bad!(get_iface_flags, libc::SIOCGIFFLAGS, ifreq);
@@ -20,7 +25,12 @@ impl SocketDevice {
     pub fn open(name: &str) -> Result<Box<dyn RawDevice>, Box<dyn Error>> {
         use std::convert::TryInto;
         let mut device = SocketDevice {
-            fd: socket(AddressFamily::Packet, SockType::Raw, SockFlag::empty(), Some(unsafe { ::std::mem::transmute(libc::ETH_P_ALL)}))?,
+            fd: socket(
+                AddressFamily::Packet,
+                SockType::Raw,
+                SockFlag::empty(),
+                Some(unsafe { ::std::mem::transmute(libc::ETH_P_ALL) }),
+            )?,
             name: name.to_string(),
         };
         if device.fd == -1 {
@@ -34,9 +44,9 @@ impl SocketDevice {
             // return Err(Box::new(RuntimeError::new("ioctl [SIOCGIFINDEX]".to_string())));
         }
         let socket_addr = SockAddr::Link(LinkAddr(libc::sockaddr_ll {
-            sll_family : libc::AF_PACKET.try_into().unwrap(),
-            sll_protocol : htons(ETH_P_ALL.try_into().unwrap()),
-            sll_ifindex : unsafe { ifr.ifr_ifru.ifr_ifindex },
+            sll_family: libc::AF_PACKET.try_into().unwrap(),
+            sll_protocol: htons(ETH_P_ALL.try_into().unwrap()),
+            sll_ifindex: unsafe { ifr.ifr_ifru.ifr_ifindex },
             sll_hatype: 0,
             sll_pkttype: 0,
             sll_halen: 0,
@@ -50,7 +60,9 @@ impl SocketDevice {
             device.close();
             return Err(Box::new(err));
         }
-        unsafe { ifr.ifr_ifru.ifr_flags = ifr.ifr_ifru.ifr_flags | (libc::IFF_PROMISC as i16); }
+        unsafe {
+            ifr.ifr_ifru.ifr_flags = ifr.ifr_ifru.ifr_flags | (libc::IFF_PROMISC as i16);
+        }
         if let Err(err) = unsafe { get_iface_flags(device.fd, &mut ifr) } {
             device.close();
             return Err(Box::new(err));
@@ -67,10 +79,16 @@ impl RawDevice for SocketDevice {
         &self.name
     }
     fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>> {
-
-        let fd = socket(AddressFamily::Inet, SockType::Datagram, SockFlag::empty(), None)?;
+        let fd = socket(
+            AddressFamily::Inet,
+            SockType::Datagram,
+            SockFlag::empty(),
+            None,
+        )?;
         let mut ifr = ifreq::from_name(self.name.as_str())?;
-        unsafe { ifr.ifr_ifru.ifr_addr.sa_family = libc::AF_INET.try_into().unwrap();  }
+        unsafe {
+            ifr.ifr_ifru.ifr_addr.sa_family = libc::AF_INET.try_into().unwrap();
+        }
         if let Err(err) = unsafe { get_hwaddr(fd, &mut ifr) } {
             unsafe {
                 unistd::close(fd)?;
@@ -78,7 +96,8 @@ impl RawDevice for SocketDevice {
             Err(Box::new(err))
         } else {
             let addr = unsafe { ifr.ifr_ifru.ifr_hwaddr.sa_data };
-            let addr = unsafe { &*(addr.as_ptr() as *const [i8; ADDR_LEN] as *const [u8; ADDR_LEN]) };
+            let addr =
+                unsafe { &*(addr.as_ptr() as *const [i8; ADDR_LEN] as *const [u8; ADDR_LEN]) };
             unsafe {
                 libc::close(fd);
             }
@@ -106,17 +125,18 @@ impl RawDevice for SocketDevice {
         }
         let mut buf = vec![];
         buf.resize(2048, 0);
-        let len: usize =
-            match unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) } {
-                0 => return,
-                -1 => {
-                    eprintln!("read");
-                    return;
-                }
-                len => len,
+        let len: usize = match unsafe {
+            libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+        } {
+            0 => return,
+            -1 => {
+                eprintln!("read");
+                return;
             }
+            len => len,
+        }
         .try_into()
-            .unwrap();
+        .unwrap();
         callback(&buf, len, arg);
     }
 
@@ -124,5 +144,3 @@ impl RawDevice for SocketDevice {
         unimplemented!()
     }
 }
-
-

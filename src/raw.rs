@@ -40,4 +40,3 @@ pub fn open(mut type_: Type, name: &str) -> Box<dyn RawDevice> {
         // Type::Bpf => unimplemented!(),
     }
 }
-
