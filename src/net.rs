@@ -34,9 +34,9 @@ pub struct Device {
     pub interfaces: Vec<Interface>,
     pub name: String,
     pub type_: DeviceType,
-    pub mtu: u16,
+    pub mtu: usize,
     pub flags: DeviceFlags,
-    pub hlen: u16,
+    pub hlen: usize,
     pub alen: usize,
     pub addr: [u8; ethernet::ADDR_LEN],
     pub peer: [u8; ethernet::ADDR_LEN],
@@ -88,9 +88,9 @@ pub struct DeviceOps {
 
 pub struct DeviceDriver {
     pub type_: DeviceType,
-    pub mtu: u16,
+    pub mtu: usize,
     pub flags: DeviceFlags,
-    pub hlen: u16,
+    pub hlen: usize,
     pub alen: usize,
     pub ops: DeviceOps,
 }

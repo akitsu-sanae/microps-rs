@@ -10,6 +10,7 @@ use std::error::Error;
 
 pub mod arp;
 pub mod ethernet;
+pub mod frame;
 pub mod icmp;
 pub mod ip;
 pub mod net;

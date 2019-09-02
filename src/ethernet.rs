@@ -1,20 +1,78 @@
 use std::error::Error;
 use std::thread::{self, ThreadId};
 
-use crate::{net, raw, util};
+use crate::{frame, net, raw, util};
 
 pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
 
-pub const HDR_SIZE: u16 = 14;
-pub const TRL_SIZE: u16 = 4;
-pub const FRAME_SIZE_MIN: u16 = 64;
-pub const FRAME_SIZE_MAX: u16 = 1518;
-pub const PAYLOAD_SIZE_MIN: u16 = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
-pub const PAYLOAD_SIZE_MAX: u16 = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
+pub const HDR_SIZE: usize = 14;
+pub const TRL_SIZE: usize = 4;
+pub const FRAME_SIZE_MIN: usize = 64;
+pub const FRAME_SIZE_MAX: usize = 1518;
+pub const PAYLOAD_SIZE_MIN: usize = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
+pub const PAYLOAD_SIZE_MAX: usize = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
 const ADDR_ANY: [u8; ADDR_LEN] = [0; ADDR_LEN];
 const ADDR_BROADCAST: [u8; ADDR_LEN] = [255; ADDR_LEN];
+
+#[repr(u16)]
+pub enum Type {
+    Arp = 0x0806,
+    Ipv4 = 0x0800,
+    Ipv6 = 0x86DD,
+}
+
+impl Type {
+    pub fn from_u16(n: u16) -> Option<Type> {
+        if n == Type::Arp as u16 {
+            Some(Type::Arp)
+        } else if n == Type::Ipv4 as u16 {
+            Some(Type::Ipv4)
+        } else if n == Type::Ipv6 as u16 {
+            Some(Type::Ipv6)
+        } else {
+            None
+        }
+    }
+}
+
+pub struct Frame {
+    pub dst_addr: frame::MacAddr,
+    pub src_addr: frame::MacAddr,
+    pub type_: Type,
+}
+
+impl frame::Frame for Frame {
+    fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
+        let mk_err = |name: &str, bytes: &frame::Bytes| {
+            Box::new(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                name, bytes
+            )))
+        };
+
+        let dst_addr = bytes.pop_mac_addr().ok_or(mk_err("dst addr", &bytes))?;
+        let src_addr = bytes.pop_mac_addr().ok_or(mk_err("src addr", &bytes))?;
+        let n = bytes.pop_u16().ok_or(mk_err("type", &bytes))?;
+        let type_ = Type::from_u16(n).ok_or(Box::new(util::RuntimeError::new(format!(
+            "{} can not be EthernetType",
+            n
+        ))))?;
+        Ok(Box::new(Frame {
+            dst_addr: dst_addr,
+            src_addr: src_addr,
+            type_: type_,
+        }))
+    }
+    fn to_bytes(self) -> frame::Bytes {
+        let mut bytes = frame::Bytes::new(FRAME_SIZE_MAX);
+        bytes.push_mac_addr(self.dst_addr);
+        bytes.push_mac_addr(self.src_addr);
+        bytes.push_u16(self.type_ as u16);
+        bytes
+    }
+}
 
 struct Data {
     // pub device: net::Device,
