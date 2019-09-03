@@ -12,7 +12,7 @@ const IPV4_ADDR_LEN: usize = 4;
 const IPV6_ADDR_LEN: usize = 16;
 
 #[derive(Debug, Clone)]
-pub struct MacAddr([u8; MAC_ADDR_LEN]);
+pub struct MacAddr(pub [u8; MAC_ADDR_LEN]);
 
 impl MacAddr {
     pub fn from_str(str: &String) -> Result<Self, Box<dyn Error>> {
@@ -35,7 +35,7 @@ impl fmt::Display for MacAddr {
 }
 
 #[derive(Debug, Clone)]
-pub struct Ipv4Addr([u8; IPV4_ADDR_LEN]);
+pub struct Ipv4Addr(pub [u8; IPV4_ADDR_LEN]);
 
 impl Ipv4Addr {
     pub fn from_str(str: String) -> Result<Self, Box<dyn Error>> {
@@ -58,7 +58,7 @@ impl fmt::Display for Ipv4Addr {
 }
 
 #[derive(Debug, Clone)]
-pub struct Ipv6Addr([u8; IPV6_ADDR_LEN]);
+pub struct Ipv6Addr(pub [u8; IPV6_ADDR_LEN]);
 
 impl Bytes {
     pub fn new(max_len: usize) -> Self {

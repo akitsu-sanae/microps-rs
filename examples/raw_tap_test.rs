@@ -20,17 +20,18 @@ fn main() {
     if args.len() != 2 {
         panic!("USAGE: raw_tap_test <device>");
     }
-    let mut device = tap::TapDevice::open(args[1].as_str()).unwrap();
+    let device = tap::TapDevice::open(args[1].as_str()).unwrap();
+    let mut device = device.lock().unwrap();
+
     eprintln!("[{}] {:?}", device.name(), device.addr());
 
     while !terminate.load(Ordering::SeqCst) {
         device.rx(
-            |_frame: &Vec<u8>, len: usize, _arg: &Vec<u8>| {
-                println!("receive {} octets", len);
-            },
-            &vec![],
+            Box::new(|frame: &Vec<u8>| {
+                println!("receive {} octets", frame.len());
+            }),
             1000,
         );
     }
-    device.close();
+    device.close().unwrap();
 }

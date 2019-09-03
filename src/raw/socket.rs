@@ -9,6 +9,7 @@ use nix::{
 };
 use std::convert::TryInto;
 use std::error::Error;
+use std::sync::{Arc, Mutex};
 
 ioctl_readwrite_bad!(get_iface_index, 0x8933, ifreq);
 ioctl_readwrite_bad!(get_iface_flags, libc::SIOCGIFFLAGS, ifreq);
@@ -20,7 +21,7 @@ pub struct SocketDevice {
 }
 
 impl SocketDevice {
-    pub fn open(name: &str) -> Result<Box<dyn RawDevice>, Box<dyn Error>> {
+    pub fn open(name: &str) -> Result<Arc<Mutex<dyn RawDevice + Send>>, Box<dyn Error>> {
         let mut device = SocketDevice {
             fd: socket(
                 AddressFamily::Packet,
@@ -64,7 +65,7 @@ impl SocketDevice {
             device.close()?;
             return Err(Box::new(err));
         }
-        Ok(Box::new(device))
+        Ok(Arc::new(Mutex::new(device)))
     }
 }
 
@@ -91,7 +92,9 @@ impl RawDevice for SocketDevice {
             let addr = unsafe { ifr.ifr_ifru.ifr_hwaddr.sa_data };
             let addr =
                 unsafe { &*(addr.as_ptr() as *const [i8; ADDR_LEN] as *const [u8; ADDR_LEN]) };
-            unistd::close(fd)?;
+            unsafe {
+                libc::close(fd);
+            }
             Ok(*addr)
         }
     }
@@ -103,7 +106,7 @@ impl RawDevice for SocketDevice {
         Ok(())
     }
 
-    fn rx(&mut self, callback: fn(&Vec<u8>, usize, &Vec<u8>), arg: &Vec<u8>, timeout: i32) {
+    fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32) {
         let mut pfd = pollfd {
             fd: self.fd,
             events: POLLIN,
@@ -116,7 +119,7 @@ impl RawDevice for SocketDevice {
         }
         let mut buf = vec![];
         buf.resize(2048, 0);
-        let len: usize = match unsafe {
+        let _len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
             0 => return,
@@ -128,7 +131,7 @@ impl RawDevice for SocketDevice {
         }
         .try_into()
         .unwrap();
-        callback(&buf, len, arg);
+        callback(&buf);
     }
 
     fn tx(&mut self, _buf: &Vec<u8>) -> isize {

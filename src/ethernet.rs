@@ -1,5 +1,6 @@
 use std::error::Error;
-use std::thread::{self, ThreadId};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use crate::{frame, net, raw, util};
 
@@ -13,8 +14,8 @@ pub const FRAME_SIZE_MAX: usize = 1518;
 pub const PAYLOAD_SIZE_MIN: usize = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
 pub const PAYLOAD_SIZE_MAX: usize = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
-const ADDR_ANY: [u8; ADDR_LEN] = [0; ADDR_LEN];
-const ADDR_BROADCAST: [u8; ADDR_LEN] = [255; ADDR_LEN];
+const ADDR_ANY: frame::MacAddr = frame::MacAddr([0; ADDR_LEN]);
+const ADDR_BROADCAST: frame::MacAddr = frame::MacAddr([255; ADDR_LEN]);
 
 #[repr(u16)]
 pub enum Type {
@@ -34,6 +35,21 @@ impl Type {
         } else {
             None
         }
+    }
+}
+
+use std::fmt;
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Type::Arp => "ARP",
+                Type::Ipv4 => "IP",
+                Type::Ipv6 => "IPv6",
+            }
+        )
     }
 }
 
@@ -74,77 +90,61 @@ impl frame::Frame for Frame {
     }
 }
 
-struct Data {
-    // pub device: net::Device,
-    // pub raw_device: raw::RawDevice,
-    pub thread: ThreadId,
+pub struct EthernetDevice {
+    pub interfaces: Vec<net::Interface>,
+    pub name: String,
+    pub raw: Arc<Mutex<dyn raw::RawDevice + Send>>,
+    pub addr: frame::MacAddr,
+    pub broadcast_addr: frame::MacAddr,
+    pub join_handle: Option<thread::JoinHandle<()>>,
     pub terminate: bool,
 }
 
-fn open(device: &mut net::Device, opt: raw::Type) -> Result<(), Box<dyn Error>> {
-    let raw_device = raw::open(opt, device.name.as_str());
-    device.data = Box::new(Data {
-        // device: device,
-        // raw_device: &raw_device,
-        thread: thread::current().id(),
-        terminate: false,
-    });
-    if device.addr == ADDR_ANY {
-        device.addr = raw_device.addr()?;
+impl EthernetDevice {
+    pub fn open(name: &str, raw_type: raw::Type) -> Result<EthernetDevice, Box<dyn Error>> {
+        Ok(EthernetDevice {
+            interfaces: vec![],
+            name: name.to_string(),
+            raw: raw::open(raw_type, name),
+            addr: ADDR_ANY.clone(),
+            broadcast_addr: ADDR_BROADCAST.clone(),
+            join_handle: None,
+            terminate: false,
+        })
     }
-    device.broadcast = ADDR_BROADCAST;
+
+    fn rx(&self, _frame: &Vec<u8>) {
+        unimplemented!()
+    }
+}
+
+pub fn run(device: Arc<Mutex<EthernetDevice>>) -> Result<(), Box<dyn Error>> {
+    let device_ = Arc::clone(&device);
+    device.lock().unwrap().join_handle = Some(thread::spawn(move || {
+        while device_.lock().unwrap().terminate {
+            let device__ = Arc::clone(&device_);
+            device_.lock().unwrap().raw.lock().unwrap().rx(
+                Box::new(move |buf: &Vec<u8>| device__.lock().unwrap().rx(buf)),
+                1000,
+            );
+        }
+    }));
     Ok(())
 }
-
-fn close(_dev: &net::Device) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
-}
-
-fn run(_dev: &net::Device) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
-}
-
-fn stop(_dev: &net::Device) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
-}
-
-fn tx(
-    _dev: &net::Device,
-    _type_: u16,
-    _payload: &Vec<u8>,
-    _plen: usize,
-    _dst: &Vec<u8>,
-) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
-}
-
-const ETHERNET_OPS: net::DeviceOps = net::DeviceOps {
-    open: open,
-    close: close,
-    run: run,
-    stop: stop,
-    tx: tx,
-};
-
-const ETHERNET_DEF: net::DeviceDriver = net::DeviceDriver {
-    type_: net::DeviceType::Ethernet,
-    mtu: PAYLOAD_SIZE_MAX,
-    flags: net::DeviceFlags::BROADCAST,
-    hlen: HDR_SIZE,
-    alen: ADDR_LEN,
-    ops: ETHERNET_OPS,
-};
-
-pub fn init(net: &mut net::Net) -> Result<(), Box<dyn Error>> {
-    net.regist_driver(ETHERNET_DEF)
-}
-
-pub fn addr_pton(p: &String) -> Result<[u8; ADDR_LEN], util::RuntimeError> {
-    use arrayvec::ArrayVec;
-    use std::convert::TryInto;
-    p.split(':')
-        .map(|n| u8::from_str_radix(n, ADDR_LEN.try_into().unwrap()))
-        .collect::<Result<ArrayVec<[_; ADDR_LEN]>, _>>()
-        .map(|arr| arr.into_inner().unwrap())
-        .map_err(|err| util::RuntimeError::new(format!("{}", err)))
+pub fn close(device: Arc<Mutex<EthernetDevice>>) -> Result<(), Box<dyn Error>> {
+    match Arc::try_unwrap(device) {
+        Ok(device) => {
+            let mut device = device.lock().unwrap();
+            if let Some(handle) = device.join_handle.take() {
+                device.terminate = true;
+                handle.join().unwrap();
+                device.raw.lock().unwrap().close()
+            } else {
+                device.raw.lock().unwrap().close()
+            }
+        }
+        Err(_) => Err(Box::new(util::RuntimeError::new(
+            "cannot close because of having multiple references".to_string(),
+        ))),
+    }
 }

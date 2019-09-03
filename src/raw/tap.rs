@@ -6,6 +6,7 @@ use libc::{self, pollfd, IFF_NO_PI, IFF_TAP, POLLIN};
 use nix::{fcntl, sys::stat::Mode, unistd};
 use std::error::Error;
 use std::os::unix::io::RawFd;
+use std::sync::{Arc, Mutex};
 
 ioctl_write_ptr!(tun_set_iff, 'T', 202, libc::c_int);
 
@@ -15,7 +16,7 @@ pub struct TapDevice {
 }
 
 impl TapDevice {
-    pub fn open(name: &str) -> Result<Box<dyn RawDevice>, Box<dyn Error>> {
+    pub fn open(name: &str) -> Result<Arc<Mutex<dyn RawDevice + Send>>, Box<dyn Error>> {
         let mut device = TapDevice {
             fd: fcntl::open("/dev/net/tun", fcntl::OFlag::O_RDWR, Mode::empty())
                 .expect("can not open /dev/net/tun"),
@@ -34,7 +35,7 @@ impl TapDevice {
         unsafe { tun_set_iff(device.fd, &mut ifr as *mut _ as *mut _) }?;
         // device.close().unwrap();
         //
-        Ok(Box::new(device))
+        Ok(Arc::new(Mutex::new(device)))
     }
 }
 
@@ -80,7 +81,7 @@ impl RawDevice for TapDevice {
         }
         Ok(())
     }
-    fn rx(&mut self, callback: fn(&Vec<u8>, usize, &Vec<u8>), arg: &Vec<u8>, timeout: i32) {
+    fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32) {
         let mut pfd = pollfd {
             fd: self.fd,
             events: POLLIN,
@@ -94,7 +95,7 @@ impl RawDevice for TapDevice {
         let mut buf = vec![];
         buf.resize(2048, 0);
         use std::convert::TryInto;
-        let len: usize = match unsafe {
+        let _len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
             0 => return,
@@ -106,7 +107,7 @@ impl RawDevice for TapDevice {
         }
         .try_into()
         .unwrap();
-        callback(&buf, len, arg);
+        callback(&buf);
     }
     fn tx(&mut self, buf: &Vec<u8>) -> isize {
         unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) }

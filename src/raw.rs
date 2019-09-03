@@ -1,5 +1,6 @@
 use crate::ethernet::ADDR_LEN;
 use std::error::Error;
+use std::sync::{Arc, Mutex};
 
 pub mod socket;
 pub mod tap;
@@ -18,7 +19,7 @@ const DEFAULT_TYPE: Type = Type::Socket;
 
 pub trait RawDevice {
     fn close(&mut self) -> Result<(), Box<dyn Error>>;
-    fn rx(&mut self, callback: fn(&Vec<u8>, usize, &Vec<u8>), arg: &Vec<u8>, timeout: i32);
+    fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32);
     fn tx(&mut self, buf: &Vec<u8>) -> isize;
 
     fn type_(&self) -> Type;
@@ -26,7 +27,7 @@ pub trait RawDevice {
     fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>>;
 }
 
-pub fn open(mut type_: Type, name: &str) -> Box<dyn RawDevice> {
+pub fn open(mut type_: Type, name: &str) -> Arc<Mutex<dyn RawDevice + Send>> {
     if type_ == Type::Auto {
         type_ = match name {
             "tap" => Type::Tap,
