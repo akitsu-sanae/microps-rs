@@ -12,5 +12,6 @@ arrayvec = "*"
 nix = "0.15"
 libc = "0.2"
 ifstructs = "0.1"
-ctrlc = "3.1"
+hexdump = "*"
+lazy_static = "*"
 

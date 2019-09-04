@@ -1,4 +1,4 @@
-use crate::ethernet::ADDR_LEN;
+use crate::frame::MacAddr;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
@@ -24,7 +24,7 @@ pub trait RawDevice {
 
     fn type_(&self) -> Type;
     fn name(&self) -> &String;
-    fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>>;
+    fn addr(&self) -> Result<MacAddr, Box<dyn Error>>;
 }
 
 pub fn open(mut type_: Type, name: &str) -> Arc<Mutex<dyn RawDevice + Send>> {

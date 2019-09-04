@@ -1,9 +1,15 @@
 use super::{RawDevice, Type};
 use crate::ethernet::ADDR_LEN;
+use crate::frame::MacAddr;
 use crate::util::RuntimeError;
 use ifstructs::ifreq;
 use libc::{self, pollfd, IFF_NO_PI, IFF_TAP, POLLIN};
-use nix::{fcntl, sys::stat::Mode, unistd};
+use nix::{
+    errno::{errno, Errno},
+    fcntl,
+    sys::stat::Mode,
+    unistd,
+};
 use std::error::Error;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
@@ -46,7 +52,7 @@ impl RawDevice for TapDevice {
     fn name(&self) -> &String {
         &self.name
     }
-    fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>> {
+    fn addr(&self) -> Result<MacAddr, Box<dyn Error>> {
         let socket = match unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) } {
             -1 => return Err(Box::new(RuntimeError::new("socket".to_string()))),
 
@@ -72,7 +78,7 @@ impl RawDevice for TapDevice {
         unsafe {
             libc::close(socket);
         }
-        Ok(addr.clone())
+        Ok(MacAddr(*addr))
     }
 
     fn close(&mut self) -> Result<(), Box<dyn Error>> {
@@ -89,13 +95,18 @@ impl RawDevice for TapDevice {
         };
         match unsafe { libc::poll(&mut pfd, 1, timeout) } {
             0 => return,
-            -1 => eprintln!("poll"), // catch EINTR case
+            -1 => {
+                if errno() != Errno::EINTR as i32 {
+                    eprintln!("poll");
+                }
+                return;
+            }
             _ => (),
         }
         let mut buf = vec![];
         buf.resize(2048, 0);
         use std::convert::TryInto;
-        let _len: usize = match unsafe {
+        let len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
             0 => return,
@@ -107,6 +118,7 @@ impl RawDevice for TapDevice {
         }
         .try_into()
         .unwrap();
+        buf.resize(len, 0);
         callback(&buf);
     }
     fn tx(&mut self, buf: &Vec<u8>) -> isize {

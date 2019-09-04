@@ -28,7 +28,7 @@ impl fmt::Display for MacAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{:#X}:{:#X}:{:#X}:{:#X}:{:#X}:{:#X}",
+            "{:X?}:{:X?}:{:X?}:{:X?}:{:X?}:{:X?}",
             self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
         )
     }

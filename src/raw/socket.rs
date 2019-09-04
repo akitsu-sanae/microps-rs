@@ -1,9 +1,11 @@
 use super::{RawDevice, Type};
 use crate::ethernet::ADDR_LEN;
+use crate::frame::MacAddr;
 use crate::util::*;
 use ifstructs::ifreq;
 use libc::{self, pollfd, ETH_P_ALL, POLLIN};
 use nix::{
+    errno::{errno, Errno},
     sys::socket::{bind, socket, AddressFamily, LinkAddr, SockAddr, SockFlag, SockType},
     unistd,
 };
@@ -76,7 +78,7 @@ impl RawDevice for SocketDevice {
     fn name(&self) -> &String {
         &self.name
     }
-    fn addr(&self) -> Result<[u8; ADDR_LEN], Box<dyn Error>> {
+    fn addr(&self) -> Result<MacAddr, Box<dyn Error>> {
         let fd = socket(
             AddressFamily::Inet,
             SockType::Datagram,
@@ -95,7 +97,7 @@ impl RawDevice for SocketDevice {
             unsafe {
                 libc::close(fd);
             }
-            Ok(*addr)
+            Ok(MacAddr(*addr))
         }
     }
     fn close(&mut self) -> Result<(), Box<dyn Error>> {
@@ -114,12 +116,17 @@ impl RawDevice for SocketDevice {
         };
         match unsafe { libc::poll(&mut pfd, 1, timeout) } {
             0 => return,
-            -1 => eprintln!("poll"), // catch EINTR case
+            -1 => {
+                if errno() != Errno::EINTR as i32 {
+                    eprintln!("poll");
+                }
+                return;
+            }
             _ => (),
         }
         let mut buf = vec![];
         buf.resize(2048, 0);
-        let _len: usize = match unsafe {
+        let len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
             0 => return,
@@ -131,6 +138,7 @@ impl RawDevice for SocketDevice {
         }
         .try_into()
         .unwrap();
+        buf.resize(len, 0);
         callback(&buf);
     }
 
