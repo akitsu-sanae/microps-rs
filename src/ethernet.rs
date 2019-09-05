@@ -61,16 +61,9 @@ pub struct Frame {
 
 impl frame::Frame for Frame {
     fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
-        let mk_err = |name: &str, bytes: &frame::Bytes| {
-            Box::new(util::RuntimeError::new(format!(
-                "cannot pop {} from {:?}",
-                name, bytes
-            )))
-        };
-
-        let dst_addr = bytes.pop_mac_addr().ok_or(mk_err("dst addr", &bytes))?;
-        let src_addr = bytes.pop_mac_addr().ok_or(mk_err("src addr", &bytes))?;
-        let n = bytes.pop_u16().ok_or(mk_err("type", &bytes))?;
+        let dst_addr = bytes.pop_mac_addr("dst addr")?;
+        let src_addr = bytes.pop_mac_addr("src addr")?;
+        let n = bytes.pop_u16("type")?;
         let type_ = Type::from_u16(n).ok_or(Box::new(util::RuntimeError::new(format!(
             "{} can not be EthernetType",
             n

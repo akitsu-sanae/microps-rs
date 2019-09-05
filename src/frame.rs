@@ -85,39 +85,39 @@ impl Bytes {
             .append(&mut n.to_be_bytes().into_iter().cloned().collect());
     }
 
-    pub fn pop_mac_addr(&mut self) -> Option<MacAddr> {
+    pub fn pop_mac_addr(&mut self, label: &str) -> Result<MacAddr, Box<dyn Error>> {
         if MAC_ADDR_LEN <= self.0.len() {
             let arr_vec: ArrayVec<[_; MAC_ADDR_LEN]> =
                 self.0.split_off(MAC_ADDR_LEN).into_iter().collect();
-            Some(MacAddr(arr_vec.into_inner().unwrap()))
+            Ok(MacAddr(arr_vec.into_inner().unwrap()))
         } else {
-            None
+            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
         }
     }
-    pub fn pop_ipv4_addr(&mut self) -> Option<Ipv4Addr> {
+    pub fn pop_ipv4_addr(&mut self, label: &str) -> Result<Ipv4Addr, Box<dyn Error>> {
         if IPV4_ADDR_LEN <= self.0.len() {
             let arr_vec: ArrayVec<[_; IPV4_ADDR_LEN]> =
                 self.0.split_off(IPV4_ADDR_LEN).into_iter().collect();
-            Some(Ipv4Addr(arr_vec.into_inner().unwrap()))
+            Ok(Ipv4Addr(arr_vec.into_inner().unwrap()))
         } else {
-            None
+            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
         }
     }
-    pub fn pop_ipv6_addr(&mut self) -> Option<Ipv6Addr> {
+    pub fn pop_ipv6_addr(&mut self, label: &str) -> Result<Ipv6Addr, Box<dyn Error>> {
         if IPV6_ADDR_LEN <= self.0.len() {
             let arr_vec: ArrayVec<[_; IPV6_ADDR_LEN]> =
                 self.0.split_off(IPV6_ADDR_LEN).into_iter().collect();
-            Some(Ipv6Addr(arr_vec.into_inner().unwrap()))
+            Ok(Ipv6Addr(arr_vec.into_inner().unwrap()))
         } else {
-            None
+            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
         }
     }
-    pub fn pop_u16(&mut self) -> Option<u16> {
+    pub fn pop_u16(&mut self, label: &str) -> Result<u16, Box<dyn Error>> {
         if 2 <= self.0.len() {
             let arr_vec: ArrayVec<[_; 2]> = self.0.split_off(2).into_iter().collect();
-            Some(u16::from_be_bytes(arr_vec.into_inner().unwrap()))
+            Ok(u16::from_be_bytes(arr_vec.into_inner().unwrap()))
         } else {
-            None
+            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
         }
     }
     pub fn rest(self) -> Vec<u8> {
