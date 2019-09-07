@@ -112,10 +112,21 @@ impl Bytes {
             Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
         }
     }
+    pub fn pop_u8(&mut self, label: &str) -> Result<u8, Box<dyn Error>> {
+        self.0.pop_front().ok_or(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+    }
+
     pub fn pop_u16(&mut self, label: &str) -> Result<u16, Box<dyn Error>> {
         if 2 <= self.0.len() {
             let arr_vec: ArrayVec<[_; 2]> = self.0.split_off(2).into_iter().collect();
             Ok(u16::from_be_bytes(arr_vec.into_inner().unwrap()))
+        } else {
+            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+        }
+    }
+    pub fn pop_bytes(&mut self, len: usize, label: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        if len <= self.0.len() {
+            Ok(self.0.split_off(len).into_iter().collect())
         } else {
             Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
         }
