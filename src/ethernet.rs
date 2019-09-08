@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::{frame, net, raw, util};
+use crate::{frame, raw, util, device, interface};
 
 pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
@@ -84,7 +84,7 @@ impl frame::Frame for Frame {
 }
 
 pub struct EthernetDevice {
-    pub interfaces: Vec<net::Interface>,
+    pub interfaces: Vec<Arc<Mutex<dyn interface::Interface + Send>>>,
     pub name: String,
     pub raw: Arc<Mutex<dyn raw::RawDevice + Send>>,
     pub addr: frame::MacAddr,
@@ -111,33 +111,35 @@ impl EthernetDevice {
     }
 }
 
-pub fn run(device: Arc<Mutex<EthernetDevice>>) -> Result<(), Box<dyn Error>> {
-    let device_ = Arc::clone(&device);
-    device.lock().unwrap().join_handle = Some(thread::spawn(move || {
-        while device_.lock().unwrap().terminate {
-            let device__ = Arc::clone(&device_);
-            device_.lock().unwrap().raw.lock().unwrap().rx(
-                Box::new(move |buf: &Vec<u8>| device__.lock().unwrap().rx(buf)),
-                1000,
-            );
-        }
-    }));
-    Ok(())
-}
-pub fn close(device: Arc<Mutex<EthernetDevice>>) -> Result<(), Box<dyn Error>> {
-    match Arc::try_unwrap(device) {
-        Ok(device) => {
-            let mut device = device.lock().unwrap();
-            if let Some(handle) = device.join_handle.take() {
-                device.terminate = true;
-                handle.join().unwrap();
-                device.raw.lock().unwrap().close()
-            } else {
-                device.raw.lock().unwrap().close()
+impl device::Device for EthernetDevice {
+    fn name(&self) -> &String {
+        &self.name
+    }
+    fn regist_interface(&mut self, _interface: Arc<Mutex<dyn interface::Interface>>) {
+        unimplemented!()
+    }
+    fn run(device: Arc<Mutex<Self>>) -> Result<(), Box<dyn Error>> {
+        let device_ = Arc::clone(&device);
+        device.lock().unwrap().join_handle = Some(thread::spawn(move || {
+            while device_.lock().unwrap().terminate {
+                let device__ = Arc::clone(&device_);
+                device_.lock().unwrap().raw.lock().unwrap().rx(
+                    Box::new(move |buf: &Vec<u8>| device__.lock().unwrap().rx(buf)),
+                    1000,
+                    );
             }
+        }));
+        Ok(())
+    }
+
+    fn  close(&mut self) -> Result<(), Box<dyn Error>> {
+        if let Some(handle) = self.join_handle.take() {
+            self.terminate = true;
+            handle.join().unwrap();
+            self.raw.lock().unwrap().close()
+        } else {
+            self.raw.lock().unwrap().close()
         }
-        Err(_) => Err(Box::new(util::RuntimeError::new(
-            "cannot close because of having multiple references".to_string(),
-        ))),
     }
 }
+

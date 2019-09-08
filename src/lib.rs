@@ -14,6 +14,8 @@ pub mod ethernet;
 pub mod frame;
 pub mod icmp;
 pub mod ip;
+pub mod device;
+pub mod interface;
 pub mod net;
 pub mod raw;
 pub mod slip;

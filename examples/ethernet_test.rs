@@ -1,7 +1,7 @@
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::{ethernet, raw};
+use microps_rs::{device::Device, ethernet, raw};
 use nix::sys::signal;
 use std::sync::{Arc, Mutex};
 
@@ -16,11 +16,17 @@ fn main() {
     let device = Arc::new(Mutex::new(
         ethernet::EthernetDevice::open(args[1].as_str(), raw::Type::Auto).unwrap(),
     ));
-    ethernet::run(Arc::clone(&device)).unwrap();
+    ethernet::EthernetDevice::run(Arc::clone(&device)).unwrap();
     loop {
         if signal::Signal::SIGINT == sigset.wait().unwrap() {
             break;
         }
     }
-    ethernet::close(device).unwrap();
+
+    if let Ok(device) = Arc::try_unwrap(device) {
+        let mut device = device.lock().unwrap();
+        ethernet::EthernetDevice::close(&mut device).unwrap();
+    } else {
+        eprintln!("cannot close because of having multiple references");
+    }
 }
