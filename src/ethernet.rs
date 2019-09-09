@@ -111,16 +111,23 @@ impl EthernetDevice {
     }
 }
 
-impl device::Device for EthernetDevice {
-    fn name(&self) -> &String {
-        &self.name
+impl device::Device for Arc<Mutex<EthernetDevice>> {
+    fn name(&self) -> String {
+        self.lock().unwrap().name.clone()
     }
-    fn regist_interface(&mut self, _interface: Arc<Mutex<dyn interface::Interface>>) {
-        unimplemented!()
+    fn add_interface(&mut self, interface: Arc<Mutex<dyn interface::Interface + Send>>) -> Result<(), Box<dyn Error>> {
+        let family = interface.lock().unwrap().family();
+        let mut device = self.lock().unwrap();
+        if  device.interfaces.iter().any(|interface_| interface_.lock().unwrap().family() == family) {
+            Err(Box::new(util::RuntimeError::new(format!("interface {} already exists at device {}", family, device.name))))
+        } else {
+            device.interfaces.push(interface);
+            Ok(())
+        }
     }
-    fn run(device: Arc<Mutex<Self>>) -> Result<(), Box<dyn Error>> {
-        let device_ = Arc::clone(&device);
-        device.lock().unwrap().join_handle = Some(thread::spawn(move || {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        let device_ = Arc::clone(self);
+        self.lock().unwrap().join_handle = Some(thread::spawn(move || {
             while device_.lock().unwrap().terminate {
                 let device__ = Arc::clone(&device_);
                 device_.lock().unwrap().raw.lock().unwrap().rx(
@@ -132,13 +139,19 @@ impl device::Device for EthernetDevice {
         Ok(())
     }
 
-    fn  close(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(handle) = self.join_handle.take() {
-            self.terminate = true;
-            handle.join().unwrap();
-            self.raw.lock().unwrap().close()
+    fn  close(self) -> Result<(), Box<dyn Error>> {
+        if let Ok(device) = Arc::try_unwrap(self) {
+            let mut device = device.lock().unwrap();
+            if let Some(handle) = device.join_handle.take() {
+                device.terminate = true;
+                handle.join().unwrap();
+                device.raw.lock().unwrap().close()?;
+            } else {
+                device.raw.lock().unwrap().close()?;
+            }
+            Ok(())
         } else {
-            self.raw.lock().unwrap().close()
+            Err(Box::new(util::RuntimeError::new("cannot close because of having multiple references".to_string())))
         }
     }
 }

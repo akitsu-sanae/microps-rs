@@ -24,3 +24,14 @@ pub enum Interface {
     Ipv4,
     Ipv6,
 }
+
+use std::fmt;
+impl fmt::Display for Interface {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            Interface::Ipv4 => "IPv4",
+            Interface::Ipv6 => "IPv6",
+        })
+    }
+}
+

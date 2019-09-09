@@ -13,20 +13,15 @@ fn main() {
     let mut sigset = signal::SigSet::empty();
     sigset.add(signal::Signal::SIGINT);
     signal::sigprocmask(signal::SigmaskHow::SIG_BLOCK, Some(&sigset), None).unwrap();
-    let device = Arc::new(Mutex::new(
+    let mut device = Arc::new(Mutex::new(
         ethernet::EthernetDevice::open(args[1].as_str(), raw::Type::Auto).unwrap(),
     ));
-    ethernet::EthernetDevice::run(Arc::clone(&device)).unwrap();
+    device.run().unwrap();
     loop {
         if signal::Signal::SIGINT == sigset.wait().unwrap() {
             break;
         }
     }
 
-    if let Ok(device) = Arc::try_unwrap(device) {
-        let mut device = device.lock().unwrap();
-        ethernet::EthernetDevice::close(&mut device).unwrap();
-    } else {
-        eprintln!("cannot close because of having multiple references");
-    }
+    device.close().unwrap();
 }
