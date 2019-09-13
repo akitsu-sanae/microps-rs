@@ -7,11 +7,11 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct Bytes(VecDeque<u8>);
 
-const MAC_ADDR_LEN: usize = 6;
-const IPV4_ADDR_LEN: usize = 4;
-const IPV6_ADDR_LEN: usize = 16;
+pub const MAC_ADDR_LEN: usize = 6;
+pub const IPV4_ADDR_LEN: usize = 4;
+pub const IPV6_ADDR_LEN: usize = 16;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacAddr(pub [u8; MAC_ADDR_LEN]);
 
 impl MacAddr {
@@ -34,10 +34,17 @@ impl fmt::Display for MacAddr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ipv4Addr(pub [u8; IPV4_ADDR_LEN]);
 
 impl Ipv4Addr {
+    pub fn empty() -> Self {
+        Ipv4Addr([0; IPV4_ADDR_LEN])
+    }
+    pub fn full() -> Self {
+        Ipv4Addr([0xff; IPV4_ADDR_LEN])
+    }
+
     pub fn from_str(str: String) -> Result<Self, Box<dyn Error>> {
         str.split(':')
             .map(|n| u8::from_str_radix(n, 10))
@@ -57,12 +64,15 @@ impl fmt::Display for Ipv4Addr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ipv6Addr(pub [u8; IPV6_ADDR_LEN]);
 
 impl Bytes {
     pub fn new(max_len: usize) -> Self {
         Bytes(VecDeque::with_capacity(max_len))
+    }
+    pub fn from_vec(vec: Vec<u8>) -> Self {
+        Bytes(VecDeque::from(vec))
     }
     pub fn push_mac_addr(&mut self, addr: MacAddr) {
         self.0.append(&mut addr.0.into_iter().cloned().collect())

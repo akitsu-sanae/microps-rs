@@ -14,4 +14,5 @@ libc = "0.2"
 ifstructs = "0.1"
 hexdump = "*"
 lazy_static = "*"
+chrono = "0.4"
 

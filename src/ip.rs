@@ -89,3 +89,70 @@ impl frame::Frame for Frame {
     }
 }
 
+// temporary definition for compiling
+#[derive(Debug)]
+pub struct Interface {
+}
+
+
+/*
+const ADDR_ANY: frame::Ipv4Addr = frame::Ipv4Addr::empty();
+const ADDR_BROADCAST: frame::Ipv4Addr = frame::Ipv4Addr::full();
+
+#[derive(Debug)]
+pub struct Ip {
+    pub route_table: Vec<Route>,
+    pub protocols: Vec<Protocol>,
+    pub fragments: Vec<Fragment>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Route {
+    pub network: frame::Ipv4Addr,
+    pub netmask: frame::Ipv4Addr,
+    pub next_hop: frame::Ipv4Addr,
+}
+
+#[derive(Debug)]
+pub struct Interface {
+    pub family: net::InterfaceFamily,
+    pub device: Arc<Mutex<dyn Device>>,
+    pub unicast: frame::Ipv4Addr,
+    pub netmask: frame::Ipv4Addr,
+    pub gateway: frame::Ipv4Addr,
+}
+
+impl Interface {
+    pub fn new(addr: &frame::Ipv4Addr, netmask: &frame::Ipv4Addr, gateway: &frame::Ipv4Addr) -> Self {
+        Interface {
+            family: net::InterfaceFamily::Ipv4,
+            unicast: unicast.clone(),
+            netmask: netmask.clone(),
+        }
+    }
+
+    pub fn tx(&mut self, packet: Vec<u8>, dst: &Option<frame::Ipv4Addr>) -> Result<(), Box<dyn Error>> {
+        let mac_addr = if self.device.lock().unwrap().flags & device::Flag::NOARP {
+            match dst  {
+                Some(dst) => arp::resolve(self, dst, packet)?,
+                None =>
+                    self.device.lock().unwap().broadcast.clone()
+            }
+        } else {
+            frame::MacAddr::empty()
+        };
+        self.device.lock().unwrap().tx(ETHERNET_TYPE_IP, packet, mac_addr)
+    }
+}
+
+pub struct Fragment {
+    pub src: frame::Ipv4Addr,
+    pub dst: frame::Ipv4Addr,
+    pub id: u16,
+    pub protocol: Protocol,
+    pub len: u16,
+    pub data: [u8; 65535],
+    pub mask: [u8; 2048],
+    pub timestamp: Time,
+} */
+

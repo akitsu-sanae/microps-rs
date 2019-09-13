@@ -14,8 +14,8 @@ pub const FRAME_SIZE_MAX: usize = 1518;
 pub const PAYLOAD_SIZE_MIN: usize = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
 pub const PAYLOAD_SIZE_MAX: usize = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
-const ADDR_ANY: frame::MacAddr = frame::MacAddr([0; ADDR_LEN]);
-const ADDR_BROADCAST: frame::MacAddr = frame::MacAddr([255; ADDR_LEN]);
+pub const ADDR_ANY: frame::MacAddr = frame::MacAddr([0; ADDR_LEN]);
+pub const ADDR_BROADCAST: frame::MacAddr = frame::MacAddr([255; ADDR_LEN]);
 
 #[repr(u16)]
 pub enum Type {
@@ -153,6 +153,10 @@ impl device::Device for Arc<Mutex<EthernetDevice>> {
         } else {
             Err(Box::new(util::RuntimeError::new("cannot close because of having multiple references".to_string())))
         }
+    }
+
+    fn tx(&mut self, _type_: Type, _payload: Vec<u8>, _dst: &frame::MacAddr) {
+        unimplemented!()
     }
 }
 
