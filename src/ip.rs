@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{frame, util};
+use crate::{frame, util, interface};
 
 #[repr(u8)]
 pub enum Protocol {
@@ -92,6 +92,12 @@ impl frame::Frame for Frame {
 // temporary definition for compiling
 #[derive(Debug)]
 pub struct Interface {
+}
+
+impl interface::Interface for Interface {
+    fn family(&self) -> interface::Family {
+        interface::Family::Ipv4
+    }
 }
 
 

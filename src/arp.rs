@@ -34,7 +34,7 @@ impl fmt::Display for Op {
     }
 }
 
-pub struct Frame {
+pub struct ArpEthernetFrame {
     pub op: Op,
     pub src_mac_addr: frame::MacAddr,
     pub src_ip_addr: frame::Ipv4Addr,
@@ -44,7 +44,7 @@ pub struct Frame {
 
 const FRAME_SIZE : usize = 52;
 
-impl Frame {
+impl ArpEthernetFrame {
     pub fn dump(&self) {
         eprintln!("op: {}", self.op);
         eprintln!("src mac addr: {}", self.src_mac_addr);
@@ -54,7 +54,7 @@ impl Frame {
     }
 }
 
-impl frame::Frame for Frame {
+impl frame::Frame for ArpEthernetFrame {
     fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
         let hardware_type = bytes.pop_u16("hardware type")?;
         if hardware_type != HARDWARE_TYPE_ETHERNET {
@@ -89,7 +89,7 @@ impl frame::Frame for Frame {
         let dst_mac_addr = bytes.pop_mac_addr("dst mac address")?;
         let dst_ip_addr = bytes.pop_ipv4_addr("dst ip address")?;
 
-        Ok(Box::new(Frame {
+        Ok(Box::new(ArpEthernetFrame {
             op: op,
             src_mac_addr: src_mac_addr,
             src_ip_addr: src_ip_addr,
@@ -114,6 +114,7 @@ impl frame::Frame for Frame {
 }
 
 struct Entry {
+    pub used: bool,
     pub ip_addr: frame::Ipv4Addr,
     pub mac_addr: frame::MacAddr,
     pub timestamp: DateTime<Utc>,
@@ -122,14 +123,22 @@ struct Entry {
     pub interface: Arc<Mutex<ip::Interface>>,
 }
 
+const TABLE_SIZE: usize = 4096;
+const TABLE_TIMEOUT_SEC: usize = 300;
+
 lazy_static! {
-    static ref TABLE: Arc<Mutex<Vec<Entry>>> = Arc::new(Mutex::new(vec![]));
+    static ref TABLE: Arc<Mutex<Vec<Arc<Mutex<Entry>>>>> = Arc::new(Mutex::new(vec![]));
     static ref TIMESTAMP: Mutex<DateTime<Utc>> = Mutex::new(Utc::now());
+}
+
+pub init() {
+    unimplemented!()
 }
 
 pub fn update_table(device: Arc<Mutex<dyn device::Device>>, ip_addr: &frame::Ipv4Addr, mac_addr: frame::MacAddr) -> Result<(), Box<dyn Error>> {
     let mut table = TABLE.lock().unwrap();
-    let ref mut entry = table.iter_mut().find(|entry| &entry.ip_addr == ip_addr).ok_or(Box::new(util::RuntimeError::new(format!("can not entry with {}", ip_addr))))?;
+    let ref mut entry = table.iter_mut().find(|entry| &entry.lock().unwrap().ip_addr == ip_addr).ok_or(Box::new(util::RuntimeError::new(format!("can not entry with {}", ip_addr))))?;
+    let ref mut entry = entry.lock().unwrap();
     entry.mac_addr = mac_addr;
     entry.timestamp = Utc::now();
     if !entry.data.is_empty() {
@@ -140,9 +149,27 @@ pub fn update_table(device: Arc<Mutex<dyn device::Device>>, ip_addr: &frame::Ipv
     Ok(())
 }
 
-fn select(_ip_addr: &frame::Ipv4Addr) -> Option<Arc<Mutex<Entry>>> {
-    unimplemented!()
+fn table_select(ip_addr: &frame::Ipv4Addr) -> Option<Arc<Mutex<Entry>>> {
+    let table = TABLE.lock().unwrap();
+    for entry in table.iter() {
+        if &entry.lock().unwrap().ip_addr == ip_addr {
+            return Some(entry.clone())
+        }
+    }
+    None
 }
+
+/*
+fn update_table(device: Arc<Mutex<dyn Device>>, ip_addr: &frame::Ipv4Addr, mac_addr: &frame::MacAddr) -> Option<()> {
+    let entry = table_select(ip_addr)?;
+    let ref mut entry = entry.lock().unwrap();
+    entry.mac_addr = mac_addr.clone();
+    entry.timestamp = Utc::now();
+    if entry.data.is_empty() {
+    }
+    entry.cond.notify_all();
+    None
+} */
 
 fn send_request(_ip_interface: &Arc<Mutex<ip::Interface>>, _ip_addr: &frame::Ipv4Addr) -> Result<(), Box<dyn Error>> {
     unimplemented!()
@@ -153,7 +180,7 @@ fn table_freespace() -> Result<Arc<Mutex<Entry>>, Box<dyn Error>> {
 }
 
 pub fn resolve(ip_interface: &Arc<Mutex<ip::Interface>>, ip_addr: frame::Ipv4Addr, data: &Vec<u8>) -> Result<Option<frame::MacAddr>, Box<dyn Error>> {
-    match select(&ip_addr) {
+    match table_select(&ip_addr) {
         Some(entry) => {
             let lock = entry.lock().unwrap();
             if lock.mac_addr == ethernet::ADDR_ANY {
@@ -192,7 +219,7 @@ fn table_patrol() {
 
 pub fn rx(packet: &Vec<u8>, device: Arc<Mutex<dyn device::Device>>) {
     use frame::Frame;
-    let frame = self::Frame::from_bytes(frame::Bytes::from_vec(packet.clone())).unwrap();
+    let frame = self::ArpEthernetFrame::from_bytes(frame::Bytes::from_vec(packet.clone())).unwrap();
     eprintln!(">>> arp rx <<<");
     frame.dump();
     let now = Utc::now();
