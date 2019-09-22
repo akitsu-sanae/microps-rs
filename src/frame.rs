@@ -1,4 +1,5 @@
 use crate::util;
+use libc;
 use arrayvec::ArrayVec;
 use std::collections::VecDeque;
 use std::error::Error;
@@ -6,6 +7,38 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Bytes(VecDeque<u8>);
+
+impl fmt::Display for Bytes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "-----+------------------------------------------------+------------------+\n")?;
+        for i in 0..self.0.len()/16+1 {
+            let offset = i * 16;
+            write!(f, "{:>04} |", offset)?;
+            for i in 0..16 {
+                if offset+i < self.0.len() {
+                    write!(f, "{:>02X} ", self.0[offset+i])?;
+                } else {
+                    write!(f, "   ")?;
+                }
+            }
+            write!(f, "| ")?;
+            for i in 0..16 {
+                if offset+i < self.0.len() {
+                    let c = self.0[offset+i] as char;
+                    if c.is_ascii() && unsafe { libc::isprint(c as i32) != 0} {
+                        write!(f, "{}", self.0[offset+i] as char)?;
+                    } else {
+                        write!(f, ".")?;
+                    }
+                } else {
+                    write!(f, " ")?;
+                }
+            }
+            write!(f, "\n")?;
+        }
+        write!(f, "-----+------------------------------------------------+------------------+\n")
+    }
+}
 
 pub const MAC_ADDR_LEN: usize = 6;
 pub const IPV4_ADDR_LEN: usize = 4;
