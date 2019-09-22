@@ -16,14 +16,15 @@ use std::sync::{Arc, Mutex};
 
 ioctl_write_ptr!(tun_set_iff, 'T', 202, libc::c_int);
 
-pub struct TapDevice {
+#[derive(Debug)]
+pub struct Device {
     fd: RawFd,
     name: String,
 }
 
-impl TapDevice {
+impl Device {
     pub fn open(name: &str) -> Result<Arc<Mutex<dyn RawDevice + Send>>, Box<dyn Error>> {
-        let mut device = TapDevice {
+        let mut device = Device {
             fd: fcntl::open("/dev/net/tun", fcntl::OFlag::O_RDWR, Mode::empty())
                 .expect("can not open /dev/net/tun"),
             name: name.to_string(),
@@ -45,7 +46,7 @@ impl TapDevice {
     }
 }
 
-impl RawDevice for TapDevice {
+impl RawDevice for Device {
     fn type_(&self) -> Type {
         Type::Tap
     }

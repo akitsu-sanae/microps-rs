@@ -2,7 +2,9 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::{frame, raw, util, device, interface};
+use bitflags::bitflags;
+
+use crate::{frame, raw, util, interface};
 
 pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
@@ -16,6 +18,19 @@ pub const PAYLOAD_SIZE_MAX: usize = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
 pub const ADDR_ANY: frame::MacAddr = frame::MacAddr([0; ADDR_LEN]);
 pub const ADDR_BROADCAST: frame::MacAddr = frame::MacAddr([255; ADDR_LEN]);
+
+bitflags! {
+    pub struct DeviceFlags: u32 {
+        const BROADCAST = 0x01;
+        const MULTICAST = 0x02;
+        const P2P       = 0x04;
+        const LOOPBACK  = 0x08;
+        const NOARP     = 0x10;
+        const PROMISC   = 0x20;
+        const RUNNING   = 0x40;
+        const UP        = 0x80;
+    }
+}
 
 #[repr(u16)]
 pub enum Type {
@@ -57,12 +72,23 @@ pub struct Frame {
     pub dst_addr: frame::MacAddr,
     pub src_addr: frame::MacAddr,
     pub type_: Type,
+    pub data: frame::Bytes,
+}
+
+impl Frame {
+    pub fn dump(&self) {
+        eprintln!("dst : {}", self.dst_addr);
+        eprintln!("src : {}", self.src_addr);
+        eprintln!("type: {}", self.type_);
+        eprintln!("{}", self.data);
+    }
 }
 
 impl frame::Frame for Frame {
     fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
         let dst_addr = bytes.pop_mac_addr("dst addr")?;
         let src_addr = bytes.pop_mac_addr("src addr")?;
+        eprintln!("{}", bytes);
         let n = bytes.pop_u16("type")?;
         let type_ = Type::from_u16(n).ok_or(Box::new(util::RuntimeError::new(format!(
             "{} can not be EthernetType",
@@ -72,6 +98,7 @@ impl frame::Frame for Frame {
             dst_addr: dst_addr,
             src_addr: src_addr,
             type_: type_,
+            data: bytes,
         }))
     }
     fn to_bytes(self) -> frame::Bytes {
@@ -83,7 +110,8 @@ impl frame::Frame for Frame {
     }
 }
 
-pub struct EthernetDevice {
+#[derive(Debug)]
+pub struct DeviceImpl {
     pub interfaces: Vec<Arc<Mutex<dyn interface::Interface + Send>>>,
     pub name: String,
     pub raw: Arc<Mutex<dyn raw::RawDevice + Send>>,
@@ -93,9 +121,13 @@ pub struct EthernetDevice {
     pub terminate: bool,
 }
 
-impl EthernetDevice {
-    pub fn open(name: &str, raw_type: raw::Type) -> Result<EthernetDevice, Box<dyn Error>> {
-        Ok(EthernetDevice {
+#[derive(Debug, Clone)]
+pub struct Device(Arc<Mutex<DeviceImpl>>);
+
+impl Device {
+    pub fn open(name: &str, raw_type: raw::Type) -> Result<Device, Box<dyn Error>> {
+        eprintln!("open : {}", name);
+        Ok(Device(Arc::new(Mutex::new(DeviceImpl {
             interfaces: vec![],
             name: name.to_string(),
             raw: raw::open(raw_type, name),
@@ -103,35 +135,28 @@ impl EthernetDevice {
             broadcast_addr: ADDR_BROADCAST.clone(),
             join_handle: None,
             terminate: false,
-        })
+        }))))
     }
 
-    fn rx(&self, _frame: &Vec<u8>) {
-        unimplemented!()
-    }
-}
-
-impl device::Device for Arc<Mutex<EthernetDevice>> {
-    fn name(&self) -> String {
-        self.lock().unwrap().name.clone()
-    }
-    fn add_interface(&mut self, interface: Arc<Mutex<dyn interface::Interface + Send>>) -> Result<(), Box<dyn Error>> {
-        let family = interface.lock().unwrap().family();
-        let mut device = self.lock().unwrap();
-        if  device.interfaces.iter().any(|interface_| interface_.lock().unwrap().family() == family) {
-            Err(Box::new(util::RuntimeError::new(format!("interface {} already exists at device {}", family, device.name))))
-        } else {
-            device.interfaces.push(interface);
-            Ok(())
+    pub fn  close(self) -> Result<(), Box<dyn Error>> {
+        let mut device = self.0.lock().unwrap();
+        eprintln!("close : {}", device.name);
+        if let Some(handle) = device.join_handle.take() {
+            device.terminate = true;
+            handle.join().unwrap();
         }
+        device.raw.lock().unwrap().close()?;
+        Ok(())
     }
-    fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let device_ = Arc::clone(self);
-        self.lock().unwrap().join_handle = Some(thread::spawn(move || {
-            while device_.lock().unwrap().terminate {
-                let device__ = Arc::clone(&device_);
-                device_.lock().unwrap().raw.lock().unwrap().rx(
-                    Box::new(move |buf: &Vec<u8>| device__.lock().unwrap().rx(buf)),
+
+    pub fn run(&self) -> Result<(), Box<dyn Error>> {
+        let device = self.clone();
+        eprintln!("run : {}", device.0.lock().unwrap().name);
+        self.0.lock().unwrap().join_handle = Some(thread::spawn(move || {
+            while !device.0.lock().unwrap().terminate {
+                let device_ = device.clone();
+                device.0.lock().unwrap().raw.lock().unwrap().rx(
+                    Box::new(move |buf: &Vec<u8>| device_.rx(buf).unwrap()),
                     1000,
                     );
             }
@@ -139,24 +164,32 @@ impl device::Device for Arc<Mutex<EthernetDevice>> {
         Ok(())
     }
 
-    fn  close(self) -> Result<(), Box<dyn Error>> {
-        if let Ok(device) = Arc::try_unwrap(self) {
-            let mut device = device.lock().unwrap();
-            if let Some(handle) = device.join_handle.take() {
-                device.terminate = true;
-                handle.join().unwrap();
-                device.raw.lock().unwrap().close()?;
-            } else {
-                device.raw.lock().unwrap().close()?;
-            }
-            Ok(())
-        } else {
-            Err(Box::new(util::RuntimeError::new("cannot close because of having multiple references".to_string())))
-        }
+    pub fn stop(&self) {
+        unimplemented!()
     }
 
-    fn tx(&mut self, _type_: Type, _payload: Vec<u8>, _dst: &frame::MacAddr) {
+    pub fn tx(&mut self, _type_: Type, _payload: Vec<u8>, _dst: &frame::MacAddr) {
         unimplemented!()
+    }
+
+    pub fn rx(&self, frame: &Vec<u8>) -> Result<(), Box<dyn Error>> {
+        use frame::Frame;
+        let frame = self::Frame::from_bytes(frame::Bytes::from_vec(frame.clone()))?;
+        frame.dump();
+
+        // TODO: transfer data to upper protocol
+        Ok(())
+    }
+
+    pub fn add_interface(&mut self, interface: Arc<Mutex<dyn interface::Interface + Send>>) -> Result<(), Box<dyn Error>> {
+        let mut device = self.0.lock().unwrap();
+        let family = interface.lock().unwrap().family();
+        if device.interfaces.iter().any(|interface_| interface_.lock().unwrap().family() == family) {
+            Err(Box::new(util::RuntimeError::new(format!("interface {} already exists at device {}", family, device.name))))
+        } else {
+            device.interfaces.push(interface);
+            Ok(())
+        }
     }
 }
 

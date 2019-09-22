@@ -17,14 +17,15 @@ ioctl_readwrite_bad!(get_iface_index, 0x8933, ifreq);
 ioctl_readwrite_bad!(get_iface_flags, libc::SIOCGIFFLAGS, ifreq);
 ioctl_readwrite_bad!(get_hwaddr, libc::SIOCGIFHWADDR, ifreq);
 
-pub struct SocketDevice {
+#[derive(Debug)]
+pub struct Device {
     fd: i32,
     name: String,
 }
 
-impl SocketDevice {
+impl Device {
     pub fn open(name: &str) -> Result<Arc<Mutex<dyn RawDevice + Send>>, Box<dyn Error>> {
-        let mut device = SocketDevice {
+        let mut device = Device {
             fd: socket(
                 AddressFamily::Packet,
                 SockType::Raw,
@@ -71,7 +72,7 @@ impl SocketDevice {
     }
 }
 
-impl RawDevice for SocketDevice {
+impl RawDevice for Device {
     fn type_(&self) -> Type {
         Type::Socket
     }

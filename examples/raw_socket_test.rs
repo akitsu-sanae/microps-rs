@@ -25,7 +25,7 @@ fn main() {
     let handler = SigHandler::Handler(handle_sigint);
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
-    let device = socket::SocketDevice::open(args[1].as_str()).unwrap();
+    let device = socket::Device::open(args[1].as_str()).unwrap();
     let mut device = device.lock().unwrap();
     eprintln!("[{}] {}", device.name(), device.addr().unwrap());
 

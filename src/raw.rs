@@ -17,7 +17,8 @@ pub enum Type {
 // assume as HAVE_PF_PACKET
 const DEFAULT_TYPE: Type = Type::Socket;
 
-pub trait RawDevice {
+use std::fmt::Debug;
+pub trait RawDevice : Debug {
     fn close(&mut self) -> Result<(), Box<dyn Error>>;
     fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32);
     fn tx(&mut self, buf: &Vec<u8>) -> isize;
@@ -36,8 +37,8 @@ pub fn open(mut type_: Type, name: &str) -> Arc<Mutex<dyn RawDevice + Send>> {
     }
     match type_ {
         Type::Auto => unreachable!(),
-        Type::Tap => tap::TapDevice::open(name).unwrap(),
-        Type::Socket => socket::SocketDevice::open(name).unwrap(),
+        Type::Tap => tap::Device::open(name).unwrap(),
+        Type::Socket => socket::Device::open(name).unwrap(),
         // Type::Bpf => unimplemented!(),
     }
 }
