@@ -79,7 +79,7 @@ impl Ipv4Addr {
     }
 
     pub fn from_str(str: String) -> Result<Self, Box<dyn Error>> {
-        str.split(':')
+        str.split('.')
             .map(|n| u8::from_str_radix(n, 10))
             .collect::<Result<ArrayVec<[_; 4]>, _>>()
             .map(|arr| Self(arr.into_inner().unwrap()))
