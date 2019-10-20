@@ -26,7 +26,7 @@ fn main() {
     let handler = SigHandler::Handler(handle_sigint);
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
-    let device = ethernet::Device::open(args[1].as_str(), raw::Type::Auto).unwrap();
+    let mut device = ethernet::Device::open(args[1].as_str(), raw::Type::Auto).unwrap();
     device.run().unwrap();
     while !TERMINATE.load(Ordering::SeqCst) {}
     device.close().unwrap();

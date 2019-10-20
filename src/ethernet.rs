@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use std::thread;
 
 use bitflags::bitflags;
@@ -110,19 +111,22 @@ impl frame::Frame for Frame {
     }
 }
 
-#[derive(Debug)]
+lazy_static! {
+    static ref JOIN_HANDLES: Mutex<HashMap<String, thread::JoinHandle<()>>> = Mutex::new(HashMap::new());
+}
+
+#[derive(Debug, Clone)]
 pub struct DeviceImpl {
     pub interfaces: Vec<Arc<Mutex<dyn interface::Interface + Send>>>,
     pub name: String,
     pub raw: Arc<Mutex<dyn raw::RawDevice + Send>>,
     pub addr: frame::MacAddr,
     pub broadcast_addr: frame::MacAddr,
-    pub join_handle: Option<thread::JoinHandle<()>>,
     pub terminate: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct Device(Arc<Mutex<DeviceImpl>>);
+pub struct Device(pub Arc<Mutex<DeviceImpl>>);
 
 impl Device {
     pub fn open(name: &str, raw_type: raw::Type) -> Result<Device, Box<dyn Error>> {
@@ -133,34 +137,44 @@ impl Device {
             raw: raw::open(raw_type, name),
             addr: ADDR_ANY.clone(),
             broadcast_addr: ADDR_BROADCAST.clone(),
-            join_handle: None,
             terminate: false,
         }))))
     }
 
     pub fn  close(self) -> Result<(), Box<dyn Error>> {
-        let mut device = self.0.lock().unwrap();
-        eprintln!("close : {}", device.name);
-        if let Some(handle) = device.join_handle.take() {
-            device.terminate = true;
+        let name = { self.0.lock().unwrap().name.clone() };
+        eprintln!("close : {}", name);
+        if let Some(handle) =  JOIN_HANDLES.lock().unwrap().remove(&name) {
+            {
+                self.0.lock().unwrap().terminate = true;
+            }
             handle.join().unwrap();
         }
-        device.raw.lock().unwrap().close()?;
+        self.0.lock().unwrap().raw.lock().unwrap().close()?;
         Ok(())
     }
 
-    pub fn run(&self) -> Result<(), Box<dyn Error>> {
+    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let device = self.clone();
-        eprintln!("run : {}", device.0.lock().unwrap().name);
-        self.0.lock().unwrap().join_handle = Some(thread::spawn(move || {
-            while !device.0.lock().unwrap().terminate {
+        let name = device.0.lock().unwrap().name.clone();
+        eprintln!("run : {}", name);
+        let join_handle = thread::spawn(move || {
+            loop {
                 let device_ = device.clone();
-                device.0.lock().unwrap().raw.lock().unwrap().rx(
+                let (terminate, name, raw) = {
+                    let device_inner = device.0.lock().unwrap();
+                    (device_inner.terminate, device_inner.name.clone(), device_inner.raw.clone())
+                };
+                if terminate {
+                    break;
+                }
+                raw.lock().unwrap().rx(
                     Box::new(move |buf: &Vec<u8>| device_.rx(buf).unwrap()),
                     1000,
-                    );
+                );
             }
-        }));
+        });
+        JOIN_HANDLES.lock().unwrap().insert(name, join_handle);
         Ok(())
     }
 
