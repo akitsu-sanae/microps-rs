@@ -1,4 +1,4 @@
-use crate::frame::MacAddr;
+use crate::frame::{MacAddr, Bytes};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
@@ -20,7 +20,7 @@ const DEFAULT_TYPE: Type = Type::Socket;
 use std::fmt::Debug;
 pub trait RawDevice : Debug {
     fn close(&mut self) -> Result<(), Box<dyn Error>>;
-    fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32);
+    fn rx(&mut self, callback: Box<dyn FnOnce(Bytes)>, timeout: i32);
     fn tx(&mut self, buf: &Vec<u8>) -> isize;
 
     fn type_(&self) -> Type;

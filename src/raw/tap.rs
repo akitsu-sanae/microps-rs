@@ -1,6 +1,6 @@
 use super::{RawDevice, Type};
 use crate::ethernet::ADDR_LEN;
-use crate::frame::MacAddr;
+use crate::frame::{MacAddr, Bytes};
 use crate::util::RuntimeError;
 use ifstructs::ifreq;
 use libc::{self, pollfd, IFF_NO_PI, IFF_TAP, POLLIN};
@@ -88,7 +88,7 @@ impl RawDevice for Device {
         }
         Ok(())
     }
-    fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32) {
+    fn rx(&mut self, callback: Box<dyn FnOnce(Bytes)>, timeout: i32) {
         let mut pfd = pollfd {
             fd: self.fd,
             events: POLLIN,
@@ -120,7 +120,7 @@ impl RawDevice for Device {
         .try_into()
         .unwrap();
         buf.resize(len, 0);
-        callback(&buf);
+        callback(Bytes::from_vec(buf));
     }
     fn tx(&mut self, buf: &Vec<u8>) -> isize {
         unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) }

@@ -1,6 +1,6 @@
 use super::{RawDevice, Type};
 use crate::ethernet::ADDR_LEN;
-use crate::frame::MacAddr;
+use crate::frame::{MacAddr, Bytes};
 use crate::util::*;
 use ifstructs::ifreq;
 use libc::{self, pollfd, ETH_P_ALL, POLLIN};

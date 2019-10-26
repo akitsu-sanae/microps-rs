@@ -161,15 +161,15 @@ impl Device {
         let join_handle = thread::spawn(move || {
             loop {
                 let device_ = device.clone();
-                let (terminate, name, raw) = {
+                let (terminate, raw) = {
                     let device_inner = device.0.lock().unwrap();
-                    (device_inner.terminate, device_inner.name.clone(), device_inner.raw.clone())
+                    (device_inner.terminate, device_inner.raw.clone())
                 };
                 if terminate {
                     break;
                 }
                 raw.lock().unwrap().rx(
-                    Box::new(move |buf: &Vec<u8>| device_.rx(buf).unwrap()),
+                    Box::new(move |buf: frame::Bytes| device_.rx(buf).unwrap()),
                     1000,
                 );
             }
@@ -182,13 +182,13 @@ impl Device {
         unimplemented!()
     }
 
-    pub fn tx(&mut self, _type_: Type, _payload: Vec<u8>, _dst: &frame::MacAddr) {
+    pub fn tx(&self, _type_: Type, _payload: frame::Bytes, _dst: &frame::MacAddr) {
         unimplemented!()
     }
 
-    pub fn rx(&self, frame: &Vec<u8>) -> Result<(), Box<dyn Error>> {
+    pub fn rx(&self, bytes: frame::Bytes) -> Result<(), Box<dyn Error>> {
         use frame::Frame;
-        let frame = self::Frame::from_bytes(frame::Bytes::from_vec(frame.clone()))?;
+        let frame = self::Frame::from_bytes(bytes)?;
         frame.dump();
 
         // TODO: transfer data to upper protocol
