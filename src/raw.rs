@@ -28,12 +28,17 @@ pub trait RawDevice : Debug {
     fn addr(&self) -> Result<MacAddr, Box<dyn Error>>;
 }
 
+fn detect_type(name: &str) -> Type {
+    if name.starts_with("tap") {
+        Type::Tap
+    } else {
+        DEFAULT_TYPE
+    }
+}
+
 pub fn open(mut type_: Type, name: &str) -> Arc<Mutex<dyn RawDevice + Send>> {
     if type_ == Type::Auto {
-        type_ = match name {
-            "tap" => Type::Tap,
-            _ => DEFAULT_TYPE,
-        }
+        type_ = detect_type(name);
     }
     match type_ {
         Type::Auto => unreachable!(),
