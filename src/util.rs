@@ -6,8 +6,8 @@ pub struct RuntimeError {
 }
 
 impl RuntimeError {
-    pub fn new(message: String) -> Self {
-        RuntimeError { message: message }
+    pub fn new(message: String) -> Box<dyn Error> {
+        Box::new(RuntimeError { message: message })
     }
 }
 

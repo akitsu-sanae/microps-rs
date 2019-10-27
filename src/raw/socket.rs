@@ -1,6 +1,6 @@
 use super::{RawDevice, Type};
 use crate::ethernet::ADDR_LEN;
-use crate::frame::{MacAddr, Bytes};
+use crate::frame::{Bytes, MacAddr};
 use crate::util::*;
 use ifstructs::ifreq;
 use libc::{self, pollfd, ETH_P_ALL, POLLIN};
@@ -36,7 +36,7 @@ impl Device {
         };
         if device.fd == -1 {
             device.close()?;
-            return Err(Box::new(RuntimeError::new("socket failed".to_string())));
+            return Err(RuntimeError::new("socket failed".to_string()));
         }
         let mut ifr = ifreq::from_name(name)?;
         if let Err(err) = unsafe { get_iface_index(device.fd, &mut ifr) } {
@@ -109,19 +109,24 @@ impl RawDevice for Device {
         Ok(())
     }
 
-    fn rx(&mut self, callback: Box<dyn FnOnce(&Vec<u8>)>, timeout: i32) {
+    fn rx(
+        &self,
+        callback: Box<dyn FnOnce(Bytes) -> Result<(), Box<dyn Error>>>,
+        timeout: i32,
+    ) -> Result<(), Box<dyn Error>> {
         let mut pfd = pollfd {
             fd: self.fd,
             events: POLLIN,
             revents: 0,
         };
         match unsafe { libc::poll(&mut pfd, 1, timeout) } {
-            0 => return,
+            0 => return Ok(()), // timeout
             -1 => {
                 if errno() != Errno::EINTR as i32 {
-                    eprintln!("poll");
+                    return Err(RuntimeError::new("poll error".to_string()));
+                } else {
+                    return Ok(());
                 }
-                return;
             }
             _ => (),
         }
@@ -130,20 +135,17 @@ impl RawDevice for Device {
         let len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
-            0 => return,
-            -1 => {
-                eprintln!("read");
-                return;
-            }
+            0 => return Ok(()), // timeout
+            -1 => return Err(RuntimeError::new("read error".to_string())),
             len => len,
         }
         .try_into()
         .unwrap();
         buf.resize(len, 0);
-        callback(&buf);
+        callback(Bytes::from_vec(buf))
     }
 
-    fn tx(&mut self, _buf: &Vec<u8>) -> isize {
+    fn tx(&self, _buf: Bytes) -> Result<(), Box<dyn Error>> {
         unimplemented!()
     }
 }

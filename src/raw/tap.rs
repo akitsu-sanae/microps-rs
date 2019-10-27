@@ -1,6 +1,6 @@
 use super::{RawDevice, Type};
 use crate::ethernet::ADDR_LEN;
-use crate::frame::{MacAddr, Bytes};
+use crate::frame::{Bytes, MacAddr};
 use crate::util::RuntimeError;
 use ifstructs::ifreq;
 use libc::{self, pollfd, IFF_NO_PI, IFF_TAP, POLLIN};
@@ -31,10 +31,7 @@ impl Device {
         };
         if device.fd == -1 {
             device.close().unwrap();
-            return Err(Box::new(RuntimeError::new(format!(
-                "can not open : {}",
-                name
-            ))));
+            return Err(RuntimeError::new(format!("can not open : {}", name)));
         }
         let mut ifr = ifreq::from_name(name)?;
         ifr.set_flags(IFF_TAP as i16 | IFF_NO_PI as i16);
@@ -55,7 +52,7 @@ impl RawDevice for Device {
     }
     fn addr(&self) -> Result<MacAddr, Box<dyn Error>> {
         let socket = match unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) } {
-            -1 => return Err(Box::new(RuntimeError::new("socket".to_string()))),
+            -1 => return Err(RuntimeError::new("socket".to_string())),
 
             socket => socket,
         };
@@ -70,9 +67,7 @@ impl RawDevice for Device {
             unsafe {
                 libc::close(socket);
             }
-            return Err(Box::new(RuntimeError::new(
-                "ioctl [SIOCGIFHWADDR]".to_string(),
-            )));
+            return Err(RuntimeError::new("ioctl [SIOCGIFHWADDR]".to_string()));
         }
         let addr = unsafe { ifr.ifr_ifru.ifr_hwaddr.sa_data };
         let addr = unsafe { &*(addr.as_ptr() as *const [i8; ADDR_LEN] as *const [u8; ADDR_LEN]) };
@@ -88,19 +83,24 @@ impl RawDevice for Device {
         }
         Ok(())
     }
-    fn rx(&mut self, callback: Box<dyn FnOnce(Bytes)>, timeout: i32) {
+    fn rx(
+        &self,
+        callback: Box<dyn FnOnce(Bytes) -> Result<(), Box<dyn Error>>>,
+        timeout: i32,
+    ) -> Result<(), Box<dyn Error>> {
         let mut pfd = pollfd {
             fd: self.fd,
             events: POLLIN,
             revents: 0,
         };
         match unsafe { libc::poll(&mut pfd, 1, timeout) } {
-            0 => return,
+            0 => return Ok(()), // timeout
             -1 => {
                 if errno() != Errno::EINTR as i32 {
-                    eprintln!("poll");
+                    return Err(RuntimeError::new("poll error".to_string()));
+                } else {
+                    return Ok(());
                 }
-                return;
             }
             _ => (),
         }
@@ -110,19 +110,18 @@ impl RawDevice for Device {
         let len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
-            0 => return,
-            -1 => {
-                eprintln!("read");
-                return;
-            }
+            0 => return Ok(()),
+            -1 => return Err(RuntimeError::new("read error".to_string())),
             len => len,
         }
         .try_into()
         .unwrap();
         buf.resize(len, 0);
-        callback(Bytes::from_vec(buf));
+        callback(Bytes::from_vec(buf))
     }
-    fn tx(&mut self, buf: &Vec<u8>) -> isize {
-        unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) }
+    fn tx(&self, buf: Bytes) -> Result<(), Box<dyn Error>> {
+        let buf = buf.to_vec();
+        unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) };
+        Ok(())
     }
 }

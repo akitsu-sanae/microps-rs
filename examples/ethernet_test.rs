@@ -4,9 +4,9 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
+use microps_rs::{ethernet, raw};
 use nix::sys::signal::{self, SigHandler, Signal};
 use std::sync::atomic::{AtomicBool, Ordering};
-use microps_rs::{ethernet, raw};
 
 lazy_static! {
     static ref TERMINATE: AtomicBool = AtomicBool::new(false);
@@ -26,7 +26,12 @@ fn main() {
     let handler = SigHandler::Handler(handle_sigint);
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
-    let mut device = ethernet::Device::open(args[1].as_str(), raw::Type::Auto).unwrap();
+    let mut device = ethernet::Device::open(
+        args[1].as_str(),
+        ethernet::ADDR_ANY.clone(),
+        raw::Type::Auto,
+    )
+    .unwrap();
     device.run().unwrap();
     while !TERMINATE.load(Ordering::SeqCst) {}
     device.close().unwrap();

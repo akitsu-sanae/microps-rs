@@ -1,11 +1,11 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::thread;
 
 use bitflags::bitflags;
 
-use crate::{frame, raw, util, interface};
+use crate::{arp, frame, ipv4, raw, util::RuntimeError};
 
 pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
@@ -89,12 +89,9 @@ impl frame::Frame for Frame {
     fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
         let dst_addr = bytes.pop_mac_addr("dst addr")?;
         let src_addr = bytes.pop_mac_addr("src addr")?;
-        eprintln!("{}", bytes);
         let n = bytes.pop_u16("type")?;
-        let type_ = Type::from_u16(n).ok_or(Box::new(util::RuntimeError::new(format!(
-            "{} can not be EthernetType",
-            n
-        ))))?;
+        let type_ =
+            Type::from_u16(n).ok_or(RuntimeError::new(format!("{} can not be EthernetType", n)))?;
         Ok(Box::new(Frame {
             dst_addr: dst_addr,
             src_addr: src_addr,
@@ -112,12 +109,13 @@ impl frame::Frame for Frame {
 }
 
 lazy_static! {
-    static ref JOIN_HANDLES: Mutex<HashMap<String, thread::JoinHandle<()>>> = Mutex::new(HashMap::new());
+    static ref JOIN_HANDLES: Mutex<HashMap<String, thread::JoinHandle<()>>> =
+        Mutex::new(HashMap::new());
 }
 
 #[derive(Debug, Clone)]
 pub struct DeviceImpl {
-    pub interfaces: Vec<Arc<Mutex<dyn interface::Interface + Send>>>,
+    pub interfaces: Vec<ipv4::Interface>, // TODO: use `Vec<Box<dyn interface::Interface>>` after defining `interface::Interface`
     pub name: String,
     pub raw: Arc<Mutex<dyn raw::RawDevice + Send>>,
     pub addr: frame::MacAddr,
@@ -129,22 +127,28 @@ pub struct DeviceImpl {
 pub struct Device(pub Arc<Mutex<DeviceImpl>>);
 
 impl Device {
-    pub fn open(name: &str, raw_type: raw::Type) -> Result<Device, Box<dyn Error>> {
-        eprintln!("open : {}", name);
+    pub fn open(
+        name: &str,
+        mut addr: frame::MacAddr,
+        raw_type: raw::Type,
+    ) -> Result<Device, Box<dyn Error>> {
+        let raw = raw::open(raw_type, name);
+        if addr == ADDR_ANY {
+            addr = { raw.lock().unwrap().addr()? };
+        }
         Ok(Device(Arc::new(Mutex::new(DeviceImpl {
             interfaces: vec![],
             name: name.to_string(),
-            raw: raw::open(raw_type, name),
-            addr: ADDR_ANY.clone(),
+            raw: raw,
+            addr: addr,
             broadcast_addr: ADDR_BROADCAST.clone(),
             terminate: false,
         }))))
     }
 
-    pub fn  close(self) -> Result<(), Box<dyn Error>> {
+    pub fn close(self) -> Result<(), Box<dyn Error>> {
         let name = { self.0.lock().unwrap().name.clone() };
-        eprintln!("close : {}", name);
-        if let Some(handle) =  JOIN_HANDLES.lock().unwrap().remove(&name) {
+        if let Some(handle) = JOIN_HANDLES.lock().unwrap().remove(&name) {
             {
                 self.0.lock().unwrap().terminate = true;
             }
@@ -157,22 +161,18 @@ impl Device {
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let device = self.clone();
         let name = device.0.lock().unwrap().name.clone();
-        eprintln!("run : {}", name);
-        let join_handle = thread::spawn(move || {
-            loop {
-                let device_ = device.clone();
-                let (terminate, raw) = {
-                    let device_inner = device.0.lock().unwrap();
-                    (device_inner.terminate, device_inner.raw.clone())
-                };
-                if terminate {
-                    break;
-                }
-                raw.lock().unwrap().rx(
-                    Box::new(move |buf: frame::Bytes| device_.rx(buf).unwrap()),
-                    1000,
-                );
+        let join_handle = thread::spawn(move || loop {
+            let device_ = device.clone();
+            let (terminate, raw) = {
+                let device_inner = device.0.lock().unwrap();
+                (device_inner.terminate, device_inner.raw.clone())
+            };
+            if terminate {
+                break;
             }
+            raw.lock()
+                .unwrap()
+                .rx(Box::new(move |buf: frame::Bytes| device_.rx(buf)), 1000);
         });
         JOIN_HANDLES.lock().unwrap().insert(name, join_handle);
         Ok(())
@@ -182,28 +182,65 @@ impl Device {
         unimplemented!()
     }
 
-    pub fn tx(&self, _type_: Type, _payload: frame::Bytes, _dst: &frame::MacAddr) {
-        unimplemented!()
+    pub fn tx(
+        &self,
+        type_: Type,
+        payload: frame::Bytes,
+        dst_addr: frame::MacAddr,
+    ) -> Result<(), Box<dyn Error>> {
+        use crate::frame::Frame;
+        let device_inner = self.0.lock().unwrap();
+        let src_addr = device_inner.addr.clone();
+        let frame = self::Frame {
+            dst_addr: dst_addr,
+            src_addr: src_addr,
+            type_: type_,
+            data: payload,
+        };
+        let raw = device_inner.raw.lock().unwrap();
+        raw.tx(frame.to_bytes())
     }
 
     pub fn rx(&self, bytes: frame::Bytes) -> Result<(), Box<dyn Error>> {
         use frame::Frame;
         let frame = self::Frame::from_bytes(bytes)?;
-        frame.dump();
-
-        // TODO: transfer data to upper protocol
+        let type_ = frame.type_;
+        let payload = frame.data;
+        self.rx_handler(type_, payload)?;
         Ok(())
     }
 
-    pub fn add_interface(&mut self, interface: Arc<Mutex<dyn interface::Interface + Send>>) -> Result<(), Box<dyn Error>> {
+    fn rx_handler(&self, type_: Type, payload: frame::Bytes) -> Result<(), Box<dyn Error>> {
+        match type_ {
+            Type::Arp => arp::rx(payload, self),
+            Type::Ipv4 => Err(RuntimeError::new("ipv4".to_string())),
+            Type::Ipv6 => Err(RuntimeError::new("ipv6".to_string())),
+        }
+    }
+
+    pub fn add_interface(&mut self, interface: ipv4::Interface) -> Result<(), Box<dyn Error>> {
         let mut device = self.0.lock().unwrap();
-        let family = interface.lock().unwrap().family();
-        if device.interfaces.iter().any(|interface_| interface_.lock().unwrap().family() == family) {
-            Err(Box::new(util::RuntimeError::new(format!("interface {} already exists at device {}", family, device.name))))
+        let family = interface.family();
+        if device
+            .interfaces
+            .iter()
+            .any(|interface_| interface_.family() == family)
+        {
+            Err(RuntimeError::new(format!(
+                "interface {} already exists at device {}",
+                family, device.name
+            )))
         } else {
             device.interfaces.push(interface);
             Ok(())
         }
     }
+    pub fn get_interface(&self) -> Result<ipv4::Interface, Box<dyn Error>> {
+        let device = self.0.lock().unwrap();
+        if device.interfaces.is_empty() {
+            Err(RuntimeError::new("interface not found".to_string()))
+        } else {
+            Ok(device.interfaces[0].clone())
+        }
+    }
 }
-

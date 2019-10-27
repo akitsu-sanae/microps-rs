@@ -1,6 +1,6 @@
 use crate::util;
-use libc;
 use arrayvec::ArrayVec;
+use libc;
 use std::collections::VecDeque;
 use std::error::Error;
 use std::fmt;
@@ -10,23 +10,26 @@ pub struct Bytes(pub VecDeque<u8>);
 
 impl fmt::Display for Bytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "-----+------------------------------------------------+------------------+\n")?;
-        for i in 0..self.0.len()/16+1 {
+        write!(
+            f,
+            "-----+------------------------------------------------+------------------+\n"
+        )?;
+        for i in 0..self.0.len() / 16 + 1 {
             let offset = i * 16;
             write!(f, "{:>04} |", offset)?;
             for i in 0..16 {
-                if offset+i < self.0.len() {
-                    write!(f, "{:>02X} ", self.0[offset+i])?;
+                if offset + i < self.0.len() {
+                    write!(f, "{:>02X} ", self.0[offset + i])?;
                 } else {
                     write!(f, "   ")?;
                 }
             }
             write!(f, "| ")?;
             for i in 0..16 {
-                if offset+i < self.0.len() {
-                    let c = self.0[offset+i] as char;
-                    if c.is_ascii() && unsafe { libc::isprint(c as i32) != 0} {
-                        write!(f, "{}", self.0[offset+i] as char)?;
+                if offset + i < self.0.len() {
+                    let c = self.0[offset + i] as char;
+                    if c.is_ascii() && unsafe { libc::isprint(c as i32) != 0 } {
+                        write!(f, "{}", self.0[offset + i] as char)?;
                     } else {
                         write!(f, ".")?;
                     }
@@ -36,7 +39,10 @@ impl fmt::Display for Bytes {
             }
             write!(f, "\n")?;
         }
-        write!(f, "-----+------------------------------------------------+------------------+\n")
+        write!(
+            f,
+            "-----+------------------------------------------------+------------------+\n"
+        )
     }
 }
 
@@ -48,12 +54,15 @@ pub const IPV6_ADDR_LEN: usize = 16;
 pub struct MacAddr(pub [u8; MAC_ADDR_LEN]);
 
 impl MacAddr {
+    pub fn empty() -> MacAddr {
+        MacAddr([0; MAC_ADDR_LEN])
+    }
     pub fn from_str(str: &String) -> Result<Self, Box<dyn Error>> {
         str.split(':')
             .map(|n| u8::from_str_radix(n, 16))
             .collect::<Result<ArrayVec<[_; 6]>, _>>()
             .map(|arr| Self(arr.into_inner().unwrap()))
-            .map_err(|err| Box::new(util::RuntimeError::new(format!("{}", err))) as Box<dyn Error>)
+            .or_else(|err| Err(util::RuntimeError::new(format!("{}", err))))
     }
 }
 
@@ -83,7 +92,7 @@ impl Ipv4Addr {
             .map(|n| u8::from_str_radix(n, 10))
             .collect::<Result<ArrayVec<[_; 4]>, _>>()
             .map(|arr| Self(arr.into_inner().unwrap()))
-            .map_err(|err| Box::new(util::RuntimeError::new(format!("{}", err))) as Box<dyn Error>)
+            .or_else(|err| Err(util::RuntimeError::new(format!("{}", err))))
     }
 }
 
@@ -101,11 +110,20 @@ impl fmt::Display for Ipv4Addr {
 pub struct Ipv6Addr(pub [u8; IPV6_ADDR_LEN]);
 
 impl Bytes {
+    pub fn empty() -> Self {
+        Bytes(VecDeque::new())
+    }
     pub fn new(max_len: usize) -> Self {
         Bytes(VecDeque::with_capacity(max_len))
     }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
     pub fn from_vec(vec: Vec<u8>) -> Self {
         Bytes(VecDeque::from(vec))
+    }
+    pub fn to_vec(self) -> Vec<u8> {
+        self.0.into_iter().collect()
     }
     pub fn push_mac_addr(&mut self, addr: MacAddr) {
         self.0.append(&mut addr.0.into_iter().cloned().collect())
@@ -135,7 +153,10 @@ impl Bytes {
             let arr_vec: ArrayVec<[_; MAC_ADDR_LEN]> = buf.into_iter().collect();
             Ok(MacAddr(arr_vec.into_inner().unwrap()))
         } else {
-            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+            Err(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                label, self.0
+            )))
         }
     }
     pub fn pop_ipv4_addr(&mut self, label: &str) -> Result<Ipv4Addr, Box<dyn Error>> {
@@ -145,7 +166,10 @@ impl Bytes {
             let arr_vec: ArrayVec<[_; IPV4_ADDR_LEN]> = buf.into_iter().collect();
             Ok(Ipv4Addr(arr_vec.into_inner().unwrap()))
         } else {
-            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+            Err(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                label, self.0
+            )))
         }
     }
     pub fn pop_ipv6_addr(&mut self, label: &str) -> Result<Ipv6Addr, Box<dyn Error>> {
@@ -155,11 +179,17 @@ impl Bytes {
             let arr_vec: ArrayVec<[_; IPV6_ADDR_LEN]> = buf.into_iter().collect();
             Ok(Ipv6Addr(arr_vec.into_inner().unwrap()))
         } else {
-            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+            Err(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                label, self.0
+            )))
         }
     }
     pub fn pop_u8(&mut self, label: &str) -> Result<u8, Box<dyn Error>> {
-        self.0.pop_front().ok_or(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+        self.0.pop_front().ok_or(util::RuntimeError::new(format!(
+            "cannot pop {} from {:?}",
+            label, self.0
+        )))
     }
 
     pub fn pop_u16(&mut self, label: &str) -> Result<u16, Box<dyn Error>> {
@@ -169,7 +199,10 @@ impl Bytes {
             let arr_vec: ArrayVec<[_; 2]> = buf.into_iter().collect();
             Ok(u16::from_be_bytes(arr_vec.into_inner().unwrap()))
         } else {
-            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+            Err(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                label, self.0
+            )))
         }
     }
     pub fn pop_bytes(&mut self, len: usize, label: &str) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -178,7 +211,10 @@ impl Bytes {
             let buf = ::std::mem::replace(&mut self.0, buf);
             Ok(buf.into_iter().collect())
         } else {
-            Err(Box::new(util::RuntimeError::new(format!("cannot pop {} from {:?}", label, self.0))))
+            Err(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                label, self.0
+            )))
         }
     }
 }
