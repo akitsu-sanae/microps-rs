@@ -4,9 +4,15 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::{ethernet, raw, ip, device::Device};
+use microps_rs::{
+    ethernet,
+    ethernet::Device,
+    frame,
+    ipv4::{Interface, InterfaceImpl},
+    raw,
+};
 use nix::sys::signal::{self, SigHandler, Signal};
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 lazy_static! {
     static ref TERMINATE: AtomicBool = AtomicBool::new(false);
@@ -29,15 +35,25 @@ fn main() {
     let handler = SigHandler::Handler(handle_sigint);
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
-    arp::init();
-
-    let mut device = Arc::new(Mutex::new(ethernet::EthernetDevice::open(ifname.as_str(), raw::Type::Auto).unwrap()));
-    let interface = Arc::new(Mutex::new(ip::Interface {
-        // unicast: ip_addr,
-    }));
-    device.add_interface(interface);
-    device.run();
-    eprintln!("[{}]", device.name());
+    let mut device = Device::open(
+        ifname.as_str(),
+        match mac_addr {
+            None => ethernet::ADDR_ANY,
+            Some(mac_addr) => frame::MacAddr::from_str(&mac_addr).unwrap(),
+        },
+        raw::Type::Auto,
+    )
+    .unwrap();
+    eprintln!("ip_addr: {}", ip_addr);
+    let interface = Interface::new(InterfaceImpl {
+        device: device.clone(),
+        unicast: frame::Ipv4Addr::from_str(ip_addr).unwrap(),
+        netmask: frame::Ipv4Addr::empty(),
+        gateway: frame::Ipv4Addr::empty(),
+    });
+    device.add_interface(interface).unwrap();
+    device.run().unwrap();
+    eprintln!("[{}]", ifname);
     while !TERMINATE.load(Ordering::SeqCst) {}
     device.close().unwrap();
 }
