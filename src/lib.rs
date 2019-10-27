@@ -1,11 +1,12 @@
 #![feature(wait_timeout_until)]
+#![feature(drain_filter)]
 
 extern crate arrayvec;
 extern crate bitflags;
+extern crate chrono;
 extern crate hexdump;
 extern crate ifstructs;
 extern crate libc;
-extern crate chrono;
 
 #[macro_use]
 extern crate lazy_static;

@@ -1,5 +1,9 @@
 use std::error::Error;
-use crate::{frame, util, interface};
+use std::sync::{Arc, Mutex};
+
+use crate::{ethernet, frame, interface, util};
+
+pub const VERSION: usize = 4;
 
 #[repr(u8)]
 pub enum Protocol {
@@ -28,14 +32,22 @@ impl Protocol {
 use std::fmt;
 impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            Protocol::Icmp => "ICMP",
-            Protocol::Tcp => "TCP",
-            Protocol::Udp => "UDP",
-            Protocol::Raw => "Raw",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Protocol::Icmp => "ICMP",
+                Protocol::Tcp => "TCP",
+                Protocol::Udp => "UDP",
+                Protocol::Raw => "Raw",
+            }
+        )
     }
 }
+
+pub const HEADER_MIN_SIZE: usize = 20;
+pub const HEADER_MAX_SIZE: usize = 60;
+pub const PAYLOAD_MAX_SIZE: usize = 65535 - HEADER_MIN_SIZE;
 
 pub struct Frame {
     pub version_header_length: u8,
@@ -49,7 +61,7 @@ pub struct Frame {
     pub src: frame::Ipv4Addr,
     pub dst: frame::Ipv4Addr,
     pub options: Vec<u8>,
-    pub payload: Vec<u8>,
+    pub payload: frame::Bytes,
 }
 
 impl frame::Frame for Frame {
@@ -61,12 +73,15 @@ impl frame::Frame for Frame {
         let offset = bytes.pop_u16("flags and fragment offset")?;
         let time_to_live = bytes.pop_u8("ttl")?;
         let protocol = bytes.pop_u8("protocol")?;
-        let protocol = Protocol::from_u8(protocol).ok_or(Box::new(util::RuntimeError::new(format!("{} can not be Protocol Family", protocol))))?;
+        let protocol = Protocol::from_u8(protocol).ok_or(util::RuntimeError::new(format!(
+            "{} can not be Protocol Family",
+            protocol
+        )))?;
         let checksum = bytes.pop_u16("checksum")?;
         let src = bytes.pop_ipv4_addr("src")?;
         let dst = bytes.pop_ipv4_addr("dst")?;
-        let options = bytes.pop_bytes(len as usize *4 - 20, "options")?;
-        let payload = bytes.rest();
+        let options = bytes.pop_bytes(len as usize * 4 - 20, "options")?;
+        let payload = bytes;
 
         Ok(Box::new(Frame {
             version_header_length: version_header_length,
@@ -89,69 +104,40 @@ impl frame::Frame for Frame {
     }
 }
 
-// temporary definition for compiling
+// temporal definition for compiling
 #[derive(Debug)]
-pub struct Interface {
-}
-
-impl interface::Interface for Interface {
-    fn family(&self) -> interface::Family {
-        interface::Family::Ipv4
-    }
-}
-
-
-/*
-const ADDR_ANY: frame::Ipv4Addr = frame::Ipv4Addr::empty();
-const ADDR_BROADCAST: frame::Ipv4Addr = frame::Ipv4Addr::full();
-
-#[derive(Debug)]
-pub struct Ip {
-    pub route_table: Vec<Route>,
-    pub protocols: Vec<Protocol>,
-    pub fragments: Vec<Fragment>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Route {
-    pub network: frame::Ipv4Addr,
-    pub netmask: frame::Ipv4Addr,
-    pub next_hop: frame::Ipv4Addr,
-}
-
-#[derive(Debug)]
-pub struct Interface {
-    pub family: net::InterfaceFamily,
-    pub device: Arc<Mutex<dyn Device>>,
+pub struct InterfaceImpl {
+    pub device: ethernet::Device,
     pub unicast: frame::Ipv4Addr,
     pub netmask: frame::Ipv4Addr,
     pub gateway: frame::Ipv4Addr,
 }
 
-impl Interface {
-    pub fn new(addr: &frame::Ipv4Addr, netmask: &frame::Ipv4Addr, gateway: &frame::Ipv4Addr) -> Self {
-        Interface {
-            family: net::InterfaceFamily::Ipv4,
-            unicast: unicast.clone(),
-            netmask: netmask.clone(),
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct Interface(pub Arc<Mutex<InterfaceImpl>>);
 
-    pub fn tx(&mut self, packet: Vec<u8>, dst: &Option<frame::Ipv4Addr>) -> Result<(), Box<dyn Error>> {
-        let mac_addr = if self.device.lock().unwrap().flags & device::Flag::NOARP {
-            match dst  {
+impl Interface {
+    pub fn new(inner: InterfaceImpl) -> Interface {
+        Interface(Arc::new(Mutex::new(inner)))
+    }
+    pub fn family(&self) -> interface::Family {
+        interface::Family::Ipv4
+    }
+    /*
+    fn tx(&mut self, packet: frame::Bytes, dst: &Option<frame::Ipv4Addr>) -> Result<(), Box<dyn Error>> {
+        let mac_addr = if self.device().inner().flags & ethernet::Flag::NOARP {
+            match dst {
                 Some(dst) => arp::resolve(self, dst, packet)?,
-                None =>
-                    self.device.lock().unwap().broadcast.clone()
+                None => self.device().inner().broadcast.clone()
             }
         } else {
             frame::MacAddr::empty()
         };
-        self.device.lock().unwrap().tx(ETHERNET_TYPE_IP, packet, mac_addr)
-    }
+        self.device.tx(ethernet::Type::Ip, packet, mac_addr)
+    } */
 }
 
-pub struct Fragment {
+/* pub struct Fragment {
     pub src: frame::Ipv4Addr,
     pub dst: frame::Ipv4Addr,
     pub id: u16,
@@ -159,6 +145,5 @@ pub struct Fragment {
     pub len: u16,
     pub data: [u8; 65535],
     pub mask: [u8; 2048],
-    pub timestamp: Time,
+    pub timestamp: DateTime<UTC>,
 } */
-
