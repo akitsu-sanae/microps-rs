@@ -126,24 +126,24 @@ impl Bytes {
         self.0.into_iter().collect()
     }
     pub fn push_mac_addr(&mut self, addr: MacAddr) {
-        self.0.append(&mut addr.0.into_iter().cloned().collect())
+        self.0.append(&mut addr.0.iter().cloned().collect())
     }
     pub fn push_ipv4_addr(&mut self, addr: Ipv4Addr) {
-        self.0.append(&mut addr.0.into_iter().cloned().collect())
+        self.0.append(&mut addr.0.iter().cloned().collect())
     }
     pub fn push_ipv6_addr(&mut self, addr: Ipv6Addr) {
-        self.0.append(&mut addr.0.into_iter().cloned().collect())
+        self.0.append(&mut addr.0.iter().cloned().collect())
     }
     pub fn push_u8(&mut self, n: u8) {
         self.0.push_back(n);
     }
     pub fn push_u16(&mut self, n: u16) {
         self.0
-            .append(&mut n.to_be_bytes().into_iter().cloned().collect());
+            .append(&mut n.to_be_bytes().iter().cloned().collect());
     }
     pub fn push_u32(&mut self, n: u32) {
         self.0
-            .append(&mut n.to_be_bytes().into_iter().cloned().collect());
+            .append(&mut n.to_be_bytes().iter().cloned().collect());
     }
 
     pub fn pop_mac_addr(&mut self, label: &str) -> Result<MacAddr, Box<dyn Error>> {
