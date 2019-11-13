@@ -1,6 +1,7 @@
 mod table;
 
 use std::error::Error;
+use std::thread::{self, JoinHandle};
 
 use chrono::Utc;
 use nix::errno::{errno, Errno};
@@ -182,7 +183,6 @@ fn send_request(
         dst_mac_addr: frame::MacAddr::empty(),
         dst_ip_addr: ip_addr.clone(),
     };
-    eprintln!("ARP REQ: {:?}", request);
     let device = {
         let interface_inner = interface.0.lock().unwrap();
         interface_inner.device.clone()
@@ -196,27 +196,35 @@ fn send_request(
 }
 
 fn send_reply(
-    interface: &ipv4::Interface,
-    mac_addr: &frame::MacAddr,
-    ip_addr: &frame::Ipv4Addr,
-    dst_addr: &frame::MacAddr,
-) -> Result<(), Box<dyn Error>> {
-    let (src_mac_addr, src_ip_addr) = {
-        let interface_inner = interface.0.lock().unwrap();
-        let device_inner = interface_inner.device.0.lock().unwrap();
-        (device_inner.addr.clone(), interface_inner.unicast.clone())
-    };
-    let reply = ArpFrame {
-        op: Op::Reply,
-        src_mac_addr: src_mac_addr,
-        src_ip_addr: src_ip_addr,
-        dst_mac_addr: mac_addr.clone(),
-        dst_ip_addr: ip_addr.clone(),
-    };
-    eprintln!("ARP REP: {:?}", reply);
-    let device = { interface.0.lock().unwrap().device.clone() };
-    device.tx(ethernet::Type::Arp, reply.to_bytes(), dst_addr.clone())?;
-    Ok(())
+    interface: ipv4::Interface,
+    mac_addr: frame::MacAddr,
+    ip_addr: frame::Ipv4Addr,
+    dst_addr: frame::MacAddr,
+) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
+    Ok(Some(thread::spawn(move || {
+        let (src_mac_addr, src_ip_addr, device) = {
+            let interface_inner = interface.0.lock().unwrap();
+            let addr = interface_inner.device.0.lock().unwrap().addr.clone();
+            (
+                addr,
+                interface_inner.unicast.clone(),
+                interface_inner.device.clone(),
+            )
+        };
+        let reply = ArpFrame {
+            op: Op::Reply,
+            src_mac_addr: src_mac_addr,
+            src_ip_addr: src_ip_addr,
+            dst_mac_addr: mac_addr,
+            dst_ip_addr: ip_addr,
+        };
+        eprintln!(">>> arp reply <<<");
+        reply.dump();
+        device
+            .tx(ethernet::Type::Arp, reply.to_bytes(), dst_addr)
+            .unwrap();
+        ()
+    })))
 }
 
 pub fn resolve(
@@ -267,10 +275,11 @@ pub fn resolve(
     }
 }
 
-pub fn rx(packet: frame::Bytes, device: &ethernet::Device) -> Result<(), Box<dyn Error>> {
+pub fn rx(
+    packet: frame::Bytes,
+    device: &ethernet::Device,
+) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
     let message = self::ArpFrame::from_bytes(packet).unwrap();
-    eprintln!(">>> arp rx <<<");
-    message.dump();
     table::patrol();
     let marge = update_table(&message.src_ip_addr, &message.src_mac_addr).is_ok();
     let interface = device.get_interface()?; // TODO: specify the kind of interface
@@ -285,13 +294,12 @@ pub fn rx(packet: frame::Bytes, device: &ethernet::Device) -> Result<(), Box<dyn
             ));
         }
         if message.op == Op::Request {
-            send_reply(
-                &interface,
-                &message.src_mac_addr,
-                &message.src_ip_addr,
-                &message.src_mac_addr,
-            )?;
+            let interface = interface.clone();
+            let src_mac_addr = message.src_mac_addr;
+            let src_ip_addr = message.src_ip_addr;
+            let src_mac_addr_ = src_mac_addr.clone();
+            send_reply(interface, src_mac_addr, src_ip_addr, src_mac_addr_)?;
         }
     }
-    Ok(())
+    Ok(None)
 }

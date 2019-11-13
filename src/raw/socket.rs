@@ -11,7 +11,8 @@ use nix::{
 };
 use std::convert::TryInto;
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 ioctl_readwrite_bad!(get_iface_index, 0x8933, ifreq);
 ioctl_readwrite_bad!(get_iface_flags, libc::SIOCGIFFLAGS, ifreq);
@@ -24,8 +25,8 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn open(name: &str) -> Result<Arc<Mutex<dyn RawDevice + Send>>, Box<dyn Error>> {
-        let mut device = Device {
+    pub fn open(name: &str) -> Result<Arc<dyn RawDevice + Sync + Send>, Box<dyn Error>> {
+        let device = Device {
             fd: socket(
                 AddressFamily::Packet,
                 SockType::Raw,
@@ -68,7 +69,7 @@ impl Device {
             device.close()?;
             return Err(Box::new(err));
         }
-        Ok(Arc::new(Mutex::new(device)))
+        Ok(Arc::new(device))
     }
 }
 
@@ -101,7 +102,7 @@ impl RawDevice for Device {
             Ok(MacAddr(*addr))
         }
     }
-    fn close(&mut self) -> Result<(), Box<dyn Error>> {
+    fn close(&self) -> Result<(), Box<dyn Error>> {
         if self.fd != -1 {
             unistd::close(self.fd)? // TODO
         }
@@ -111,21 +112,21 @@ impl RawDevice for Device {
 
     fn rx(
         &self,
-        callback: Box<dyn FnOnce(Bytes) -> Result<(), Box<dyn Error>>>,
+        callback: Box<dyn FnOnce(Bytes) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>>,
         timeout: i32,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
         let mut pfd = pollfd {
             fd: self.fd,
             events: POLLIN,
             revents: 0,
         };
         match unsafe { libc::poll(&mut pfd, 1, timeout) } {
-            0 => return Ok(()), // timeout
+            0 => return Ok(None), // timeout
             -1 => {
                 if errno() != Errno::EINTR as i32 {
                     return Err(RuntimeError::new("poll error".to_string()));
                 } else {
-                    return Ok(());
+                    return Ok(None);
                 }
             }
             _ => (),
@@ -135,7 +136,7 @@ impl RawDevice for Device {
         let len: usize = match unsafe {
             libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         } {
-            0 => return Ok(()), // timeout
+            0 => return Ok(None), // timeout
             -1 => return Err(RuntimeError::new("read error".to_string())),
             len => len,
         }

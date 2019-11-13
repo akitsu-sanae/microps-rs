@@ -117,7 +117,7 @@ lazy_static! {
 pub struct DeviceImpl {
     pub interfaces: Vec<ipv4::Interface>, // TODO: use `Vec<Box<dyn interface::Interface>>` after defining `interface::Interface`
     pub name: String,
-    pub raw: Arc<Mutex<dyn raw::RawDevice + Send>>,
+    pub raw: Arc<dyn raw::RawDevice + Sync + Send>,
     pub addr: frame::MacAddr,
     pub broadcast_addr: frame::MacAddr,
     pub terminate: bool,
@@ -134,7 +134,7 @@ impl Device {
     ) -> Result<Device, Box<dyn Error>> {
         let raw = raw::open(raw_type, name);
         if addr == ADDR_ANY {
-            addr = { raw.lock().unwrap().addr()? };
+            addr = { raw.addr()? };
         }
         Ok(Device(Arc::new(Mutex::new(DeviceImpl {
             interfaces: vec![],
@@ -154,7 +154,7 @@ impl Device {
             }
             handle.join().unwrap();
         }
-        self.0.lock().unwrap().raw.lock().unwrap().close()?;
+        self.0.lock().unwrap().raw.close()?;
         Ok(())
     }
 
@@ -170,9 +170,14 @@ impl Device {
             if terminate {
                 break;
             }
-            raw.lock()
-                .unwrap()
-                .rx(Box::new(move |buf: frame::Bytes| device_.rx(buf)), 1000);
+            let tx_handle = raw.rx(Box::new(move |buf: frame::Bytes| device_.rx(buf)), 1000);
+            match tx_handle {
+                Ok(Some(tx_join_handle)) => {
+                    tx_join_handle.join().unwrap();
+                }
+                Ok(None) => {}
+                Err(_err) => {} // TODO: use err
+            }
         });
         JOIN_HANDLES.lock().unwrap().insert(name, join_handle);
         Ok(())
@@ -197,20 +202,25 @@ impl Device {
             type_: type_,
             data: payload,
         };
-        let raw = device_inner.raw.lock().unwrap();
-        raw.tx(frame.to_bytes())
+        device_inner.raw.tx(frame.to_bytes())
     }
 
-    pub fn rx(&self, bytes: frame::Bytes) -> Result<(), Box<dyn Error>> {
+    pub fn rx(
+        &self,
+        bytes: frame::Bytes,
+    ) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
         use frame::Frame;
         let frame = self::Frame::from_bytes(bytes)?;
         let type_ = frame.type_;
         let payload = frame.data;
-        self.rx_handler(type_, payload)?;
-        Ok(())
+        self.rx_handler(type_, payload)
     }
 
-    fn rx_handler(&self, type_: Type, payload: frame::Bytes) -> Result<(), Box<dyn Error>> {
+    fn rx_handler(
+        &self,
+        type_: Type,
+        payload: frame::Bytes,
+    ) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
         match type_ {
             Type::Arp => arp::rx(payload, self),
             Type::Ipv4 => Err(RuntimeError::new("ipv4".to_string())),

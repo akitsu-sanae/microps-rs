@@ -1,6 +1,7 @@
 use crate::frame::{Bytes, MacAddr};
 use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 pub mod socket;
 pub mod tap;
@@ -19,12 +20,12 @@ const DEFAULT_TYPE: Type = Type::Socket;
 
 use std::fmt::Debug;
 pub trait RawDevice: Debug {
-    fn close(&mut self) -> Result<(), Box<dyn Error>>;
+    fn close(&self) -> Result<(), Box<dyn Error>>;
     fn rx(
         &self,
-        callback: Box<dyn FnOnce(Bytes) -> Result<(), Box<dyn Error>>>,
+        callback: Box<dyn FnOnce(Bytes) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>>,
         timeout: i32,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>;
     fn tx(&self, buf: Bytes) -> Result<(), Box<dyn Error>>;
 
     fn type_(&self) -> Type;
@@ -40,7 +41,7 @@ fn detect_type(name: &str) -> Type {
     }
 }
 
-pub fn open(mut type_: Type, name: &str) -> Arc<Mutex<dyn RawDevice + Send>> {
+pub fn open(mut type_: Type, name: &str) -> Arc<dyn RawDevice + Sync + Send> {
     if type_ == Type::Auto {
         type_ = detect_type(name);
     }
