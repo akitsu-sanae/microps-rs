@@ -5,7 +5,7 @@ use std::thread;
 
 use bitflags::bitflags;
 
-use crate::{arp, frame, ipv4, raw, util::RuntimeError};
+use crate::{arp, frame, ip, raw, util::RuntimeError};
 
 pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
@@ -36,18 +36,15 @@ bitflags! {
 #[repr(u16)]
 pub enum Type {
     Arp = 0x0806,
-    Ipv4 = 0x0800,
-    Ipv6 = 0x86DD,
+    Ip = 0x0800,
 }
 
 impl Type {
     pub fn from_u16(n: u16) -> Option<Type> {
         if n == Type::Arp as u16 {
             Some(Type::Arp)
-        } else if n == Type::Ipv4 as u16 {
-            Some(Type::Ipv4)
-        } else if n == Type::Ipv6 as u16 {
-            Some(Type::Ipv6)
+        } else if n == Type::Ip as u16 {
+            Some(Type::Ip)
         } else {
             None
         }
@@ -62,8 +59,7 @@ impl fmt::Display for Type {
             "{}",
             match self {
                 Type::Arp => "ARP",
-                Type::Ipv4 => "IP",
-                Type::Ipv6 => "IPv6",
+                Type::Ip => "IP",
             }
         )
     }
@@ -115,7 +111,7 @@ lazy_static! {
 
 #[derive(Debug, Clone)]
 pub struct DeviceImpl {
-    pub interfaces: Vec<ipv4::Interface>, // TODO: use `Vec<Box<dyn interface::Interface>>` after defining `interface::Interface`
+    pub interface: Option<ip::Interface>,
     pub name: String,
     pub raw: Arc<dyn raw::RawDevice + Sync + Send>,
     pub addr: frame::MacAddr,
@@ -137,7 +133,7 @@ impl Device {
             addr = { raw.addr()? };
         }
         Ok(Device(Arc::new(Mutex::new(DeviceImpl {
-            interfaces: vec![],
+            interface: None,
             name: name.to_string(),
             raw: raw,
             addr: addr,
@@ -223,34 +219,7 @@ impl Device {
     ) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
         match type_ {
             Type::Arp => arp::rx(payload, self),
-            Type::Ipv4 => Err(RuntimeError::new("ipv4".to_string())),
-            Type::Ipv6 => Err(RuntimeError::new("ipv6".to_string())),
-        }
-    }
-
-    pub fn add_interface(&mut self, interface: ipv4::Interface) -> Result<(), Box<dyn Error>> {
-        let mut device = self.0.lock().unwrap();
-        let family = interface.family();
-        if device
-            .interfaces
-            .iter()
-            .any(|interface_| interface_.family() == family)
-        {
-            Err(RuntimeError::new(format!(
-                "interface {} already exists at device {}",
-                family, device.name
-            )))
-        } else {
-            device.interfaces.push(interface);
-            Ok(())
-        }
-    }
-    pub fn get_interface(&self) -> Result<ipv4::Interface, Box<dyn Error>> {
-        let device = self.0.lock().unwrap();
-        if device.interfaces.is_empty() {
-            Err(RuntimeError::new("interface not found".to_string()))
-        } else {
-            Ok(device.interfaces[0].clone())
+            Type::Ip => ip::rx(payload, self),
         }
     }
 }

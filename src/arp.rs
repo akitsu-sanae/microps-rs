@@ -9,7 +9,7 @@ use nix::errno::{errno, Errno};
 use crate::{
     ethernet,
     frame::{self, Frame},
-    ipv4,
+    ip,
     util::RuntimeError,
 };
 
@@ -52,9 +52,9 @@ impl fmt::Display for Op {
 pub struct ArpFrame {
     pub op: Op,
     pub src_mac_addr: frame::MacAddr,
-    pub src_ip_addr: frame::Ipv4Addr,
+    pub src_ip_addr: frame::IpAddr,
     pub dst_mac_addr: frame::MacAddr,
-    pub dst_ip_addr: frame::Ipv4Addr,
+    pub dst_ip_addr: frame::IpAddr,
 }
 
 const FRAME_SIZE: usize = 52;
@@ -80,10 +80,10 @@ impl frame::Frame for ArpFrame {
         }
 
         let protocol = bytes.pop_u16("protocol type")?;
-        if protocol != ethernet::Type::Ipv4 as u16 {
+        if protocol != ethernet::Type::Ip as u16 {
             return Err(RuntimeError::new(format!(
                 "protocol type must be {}, but {}",
-                ethernet::Type::Ipv4 as u16,
+                ethernet::Type::Ip as u16,
                 protocol
             )));
         }
@@ -98,10 +98,10 @@ impl frame::Frame for ArpFrame {
         }
 
         let ip_address_len = bytes.pop_u8("ip address length")?;
-        if ip_address_len as usize != frame::IPV4_ADDR_LEN {
+        if ip_address_len as usize != frame::IP_ADDR_LEN {
             return Err(RuntimeError::new(format!(
                 "ip address length must be {}, but {}",
-                frame::IPV4_ADDR_LEN,
+                frame::IP_ADDR_LEN,
                 ip_address_len
             )));
         }
@@ -115,9 +115,9 @@ impl frame::Frame for ArpFrame {
             return Err(RuntimeError::new(format!("invalid operation: {}", op)));
         };
         let src_mac_addr = bytes.pop_mac_addr("src mac address")?;
-        let src_ip_addr = bytes.pop_ipv4_addr("src ip address")?;
+        let src_ip_addr = bytes.pop_ip_addr("src ip address")?;
         let dst_mac_addr = bytes.pop_mac_addr("dst mac address")?;
-        let dst_ip_addr = bytes.pop_ipv4_addr("dst ip address")?;
+        let dst_ip_addr = bytes.pop_ip_addr("dst ip address")?;
 
         Ok(Box::new(ArpFrame {
             op: op,
@@ -131,20 +131,20 @@ impl frame::Frame for ArpFrame {
         use std::convert::TryInto;
         let mut bytes = frame::Bytes::new(FRAME_SIZE);
         bytes.push_u16(HARDWARE_TYPE_ETHERNET);
-        bytes.push_u16(ethernet::Type::Ipv4 as u16);
+        bytes.push_u16(ethernet::Type::Ip as u16);
         bytes.push_u8(frame::MAC_ADDR_LEN.try_into().unwrap());
-        bytes.push_u8(frame::IPV4_ADDR_LEN.try_into().unwrap());
+        bytes.push_u8(frame::IP_ADDR_LEN.try_into().unwrap());
         bytes.push_u16(self.op as u16);
         bytes.push_mac_addr(self.src_mac_addr);
-        bytes.push_ipv4_addr(self.src_ip_addr);
+        bytes.push_ip_addr(self.src_ip_addr);
         bytes.push_mac_addr(self.dst_mac_addr);
-        bytes.push_ipv4_addr(self.dst_ip_addr);
+        bytes.push_ip_addr(self.dst_ip_addr);
         bytes
     }
 }
 
 fn update_table(
-    ip_addr: &frame::Ipv4Addr,
+    ip_addr: &frame::IpAddr,
     mac_addr: &frame::MacAddr,
 ) -> Result<(), Box<dyn Error>> {
     let idx = table::lookup(ip_addr).ok_or(RuntimeError::new(format!(
@@ -161,15 +161,15 @@ fn update_table(
         (entry.data.clone(), device, entry.mac_addr.clone())
     };
     if data.is_empty() {
-        device.tx(ethernet::Type::Ipv4, data, mac_addr)?;
+        device.tx(ethernet::Type::Ip, data, mac_addr)?;
         table::remove(idx)?;
     }
     Ok(())
 }
 
 fn send_request(
-    interface: &ipv4::Interface,
-    ip_addr: &frame::Ipv4Addr,
+    interface: &ip::Interface,
+    ip_addr: &frame::IpAddr,
 ) -> Result<(), Box<dyn Error>> {
     let (src_mac_addr, src_ip_addr) = {
         let interface_inner = interface.0.lock().unwrap();
@@ -196,9 +196,9 @@ fn send_request(
 }
 
 fn send_reply(
-    interface: ipv4::Interface,
+    interface: ip::Interface,
     mac_addr: frame::MacAddr,
-    ip_addr: frame::Ipv4Addr,
+    ip_addr: frame::IpAddr,
     dst_addr: frame::MacAddr,
 ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
     Ok(Some(thread::spawn(move || {
@@ -228,8 +228,8 @@ fn send_reply(
 }
 
 pub fn resolve(
-    ip_interface: &ipv4::Interface,
-    ip_addr: frame::Ipv4Addr,
+    ip_interface: &ip::Interface,
+    ip_addr: frame::IpAddr,
     data: frame::Bytes,
 ) -> Result<Option<frame::MacAddr>, Box<dyn Error>> {
     match table::lookup(&ip_addr) {
@@ -282,7 +282,8 @@ pub fn rx(
     let message = self::ArpFrame::from_bytes(packet).unwrap();
     table::patrol();
     let marge = update_table(&message.src_ip_addr, &message.src_mac_addr).is_ok();
-    let interface = device.get_interface()?; // TODO: specify the kind of interface
+    let device = device.0.lock().unwrap();
+    let interface = device.interface.as_ref().ok_or(RuntimeError::new(format!("device `{}` has not ip interface.", device.name)))?;
     let src_ip_addr = interface.0.lock().unwrap().unicast.clone();
     if src_ip_addr == message.dst_ip_addr {
         if !marge {

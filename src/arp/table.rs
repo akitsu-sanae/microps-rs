@@ -3,23 +3,23 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use chrono::{DateTime, Duration, Utc};
 
-use crate::{frame, ipv4, util::RuntimeError};
+use crate::{frame, ip, util::RuntimeError};
 
 #[derive(Debug)]
 pub struct Entry {
-    pub ip_addr: frame::Ipv4Addr,
+    pub ip_addr: frame::IpAddr,
     pub mac_addr: frame::MacAddr,
     pub timestamp: DateTime<Utc>,
     pub cond: Condvar,
     pub data: frame::Bytes,
-    pub interface: ipv4::Interface,
+    pub interface: ip::Interface,
 }
 
 impl Entry {
     pub fn new(
-        ip_addr: frame::Ipv4Addr,
+        ip_addr: frame::IpAddr,
         mac_addr: frame::MacAddr,
-        interface: ipv4::Interface,
+        interface: ip::Interface,
     ) -> Entry {
         Entry {
             ip_addr: ip_addr,
@@ -37,7 +37,7 @@ lazy_static! {
     static ref TIMESTAMP: Mutex<DateTime<Utc>> = Mutex::new(Utc::now());
 }
 
-pub fn lookup(ip_addr: &frame::Ipv4Addr) -> Option<usize> {
+pub fn lookup(ip_addr: &frame::IpAddr) -> Option<usize> {
     let table = TABLE.lock().unwrap();
     for (idx, entry) in table.iter().enumerate() {
         if &entry.ip_addr == ip_addr {

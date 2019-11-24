@@ -47,8 +47,7 @@ impl fmt::Display for Bytes {
 }
 
 pub const MAC_ADDR_LEN: usize = 6;
-pub const IPV4_ADDR_LEN: usize = 4;
-pub const IPV6_ADDR_LEN: usize = 16;
+pub const IP_ADDR_LEN: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacAddr(pub [u8; MAC_ADDR_LEN]);
@@ -77,14 +76,14 @@ impl fmt::Display for MacAddr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ipv4Addr(pub [u8; IPV4_ADDR_LEN]);
+pub struct IpAddr(pub [u8; IP_ADDR_LEN]);
 
-impl Ipv4Addr {
+impl IpAddr {
     pub fn empty() -> Self {
-        Ipv4Addr([0; IPV4_ADDR_LEN])
+        IpAddr([0; IP_ADDR_LEN])
     }
     pub fn full() -> Self {
-        Ipv4Addr([0xff; IPV4_ADDR_LEN])
+        IpAddr([0xff; IP_ADDR_LEN])
     }
 
     pub fn from_str(str: String) -> Result<Self, Box<dyn Error>> {
@@ -96,7 +95,7 @@ impl Ipv4Addr {
     }
 }
 
-impl fmt::Display for Ipv4Addr {
+impl fmt::Display for IpAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -105,9 +104,6 @@ impl fmt::Display for Ipv4Addr {
         )
     }
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ipv6Addr(pub [u8; IPV6_ADDR_LEN]);
 
 impl Bytes {
     pub fn empty() -> Self {
@@ -128,10 +124,7 @@ impl Bytes {
     pub fn push_mac_addr(&mut self, addr: MacAddr) {
         self.0.append(&mut addr.0.iter().cloned().collect())
     }
-    pub fn push_ipv4_addr(&mut self, addr: Ipv4Addr) {
-        self.0.append(&mut addr.0.iter().cloned().collect())
-    }
-    pub fn push_ipv6_addr(&mut self, addr: Ipv6Addr) {
+    pub fn push_ip_addr(&mut self, addr: IpAddr) {
         self.0.append(&mut addr.0.iter().cloned().collect())
     }
     pub fn push_u8(&mut self, n: u8) {
@@ -159,25 +152,12 @@ impl Bytes {
             )))
         }
     }
-    pub fn pop_ipv4_addr(&mut self, label: &str) -> Result<Ipv4Addr, Box<dyn Error>> {
-        if IPV4_ADDR_LEN <= self.0.len() {
-            let buf = self.0.split_off(IPV4_ADDR_LEN);
+    pub fn pop_ip_addr(&mut self, label: &str) -> Result<IpAddr, Box<dyn Error>> {
+        if IP_ADDR_LEN <= self.0.len() {
+            let buf = self.0.split_off(IP_ADDR_LEN);
             let buf = ::std::mem::replace(&mut self.0, buf);
-            let arr_vec: ArrayVec<[_; IPV4_ADDR_LEN]> = buf.into_iter().collect();
-            Ok(Ipv4Addr(arr_vec.into_inner().unwrap()))
-        } else {
-            Err(util::RuntimeError::new(format!(
-                "cannot pop {} from {:?}",
-                label, self.0
-            )))
-        }
-    }
-    pub fn pop_ipv6_addr(&mut self, label: &str) -> Result<Ipv6Addr, Box<dyn Error>> {
-        if IPV6_ADDR_LEN <= self.0.len() {
-            let buf = self.0.split_off(IPV6_ADDR_LEN);
-            let buf = ::std::mem::replace(&mut self.0, buf);
-            let arr_vec: ArrayVec<[_; IPV6_ADDR_LEN]> = buf.into_iter().collect();
-            Ok(Ipv6Addr(arr_vec.into_inner().unwrap()))
+            let arr_vec: ArrayVec<[_; IP_ADDR_LEN]> = buf.into_iter().collect();
+            Ok(IpAddr(arr_vec.into_inner().unwrap()))
         } else {
             Err(util::RuntimeError::new(format!(
                 "cannot pop {} from {:?}",
