@@ -75,7 +75,7 @@ impl fmt::Display for MacAddr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IpAddr(pub [u8; IP_ADDR_LEN]);
 
 impl IpAddr {
@@ -92,6 +92,15 @@ impl IpAddr {
             .collect::<Result<ArrayVec<[_; 4]>, _>>()
             .map(|arr| Self(arr.into_inner().unwrap()))
             .or_else(|err| Err(util::RuntimeError::new(format!("{}", err))))
+    }
+
+    pub fn apply_mask(&self, mask: &IpAddr) -> IpAddr {
+        IpAddr([
+               self.0[0] & mask.0[0],
+               self.0[1] & mask.0[1],
+               self.0[2] & mask.0[2],
+               self.0[3] & mask.0[3],
+        ])
     }
 }
 

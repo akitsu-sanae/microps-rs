@@ -5,6 +5,7 @@ use std::thread::JoinHandle;
 use crate::{ethernet, frame, util, protocol::{Protocol, ProtocolType}, ip};
 
 mod route;
+mod fragment;
 
 pub const VERSION: usize = 4;
 
@@ -123,18 +124,7 @@ fn forward_process(_dgram: &mut Dgram, _interface: &ip::Interface) -> Result<(),
     unimplemented!()
 }
 
-struct Fragment {
-    src: frame::IpAddr,
-    dst: frame::IpAddr,
-    id: u16,
-    protocol: ProtocolType,
-    len: u16,
-    data: frame::Bytes,
-    mask: frame::Bytes,
-    timestamp: usize,
-}
-
-fn fragment_process(_dgram: &Dgram) -> Result<Fragment, Box<dyn Error>> {
+fn fragment_process(_dgram: &Dgram) -> Result<fragment::Fragment, Box<dyn Error>> {
     unimplemented!()
 }
 

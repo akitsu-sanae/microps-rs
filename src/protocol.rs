@@ -2,7 +2,7 @@ use std::error::Error;
 use crate::{frame, ip};
 
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProtocolType {
     Icmp = 0x01,
     Tcp = 0x06,
