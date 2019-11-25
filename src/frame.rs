@@ -96,21 +96,17 @@ impl IpAddr {
 
     pub fn apply_mask(&self, mask: &IpAddr) -> IpAddr {
         IpAddr([
-               self.0[0] & mask.0[0],
-               self.0[1] & mask.0[1],
-               self.0[2] & mask.0[2],
-               self.0[3] & mask.0[3],
+            self.0[0] & mask.0[0],
+            self.0[1] & mask.0[1],
+            self.0[2] & mask.0[2],
+            self.0[3] & mask.0[3],
         ])
     }
 }
 
 impl fmt::Display for IpAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}.{}.{}.{}",
-            self.0[0], self.0[1], self.0[2], self.0[3]
-        )
+        write!(f, "{}.{}.{}.{}", self.0[0], self.0[1], self.0[2], self.0[3])
     }
 }
 

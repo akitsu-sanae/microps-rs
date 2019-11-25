@@ -1,5 +1,5 @@
-use std::error::Error;
 use crate::{frame, ip};
+use std::error::Error;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +44,11 @@ impl fmt::Display for ProtocolType {
 
 pub trait Protocol {
     fn type_(&self) -> ProtocolType;
-    fn handler(&self, payload: frame::Bytes, src: frame::IpAddr, dst: frame::IpAddr, interface: &ip::Interface) -> Result<(), Box<dyn Error>>;
+    fn handler(
+        &self,
+        payload: frame::Bytes,
+        src: frame::IpAddr,
+        dst: frame::IpAddr,
+        interface: &ip::Interface,
+    ) -> Result<(), Box<dyn Error>>;
 }
-

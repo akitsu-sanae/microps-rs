@@ -4,7 +4,11 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::{ethernet, raw, ipv4::{Interface, InterfaceImpl}, frame};
+use microps_rs::{
+    ethernet, frame,
+    ipv4::{Interface, InterfaceImpl},
+    raw,
+};
 use nix::sys::signal::{self, SigHandler, Signal};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -36,9 +40,8 @@ const INTERFACES: [InterfaceData; 2] = [
         mac_addr: "00:00:5E:00:53:10",
         ip_addr: "172.16.1.1",
         netmask: "255.255.255.0",
-    }
+    },
 ];
-
 
 fn main() {
     set_forwarding(true);
@@ -46,7 +49,9 @@ fn main() {
         let mut device = ethernet::Device::open(
             interface.name,
             frame::MacAddr::from_str(&interface.mac_addr.to_string()).unwrap(),
-            raw::Type::Auto).unwrap();
+            raw::Type::Auto,
+        )
+        .unwrap();
         let interface = Interface::new(InterfaceImpl {
             device: device.clone(),
             unicast: frame::Ipv4Addr::from_str(interface.ip_addr.to_string()).unwrap(),

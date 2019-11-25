@@ -143,10 +143,7 @@ impl frame::Frame for ArpFrame {
     }
 }
 
-fn update_table(
-    ip_addr: &frame::IpAddr,
-    mac_addr: &frame::MacAddr,
-) -> Result<(), Box<dyn Error>> {
+fn update_table(ip_addr: &frame::IpAddr, mac_addr: &frame::MacAddr) -> Result<(), Box<dyn Error>> {
     let idx = table::lookup(ip_addr).ok_or(RuntimeError::new(format!(
         "not found in table: {}",
         ip_addr
@@ -167,10 +164,7 @@ fn update_table(
     Ok(())
 }
 
-fn send_request(
-    interface: &ip::Interface,
-    ip_addr: &frame::IpAddr,
-) -> Result<(), Box<dyn Error>> {
+fn send_request(interface: &ip::Interface, ip_addr: &frame::IpAddr) -> Result<(), Box<dyn Error>> {
     let (src_mac_addr, src_ip_addr) = {
         let interface_inner = interface.0.lock().unwrap();
         let device_inner = interface_inner.device.0.lock().unwrap();
@@ -283,7 +277,10 @@ pub fn rx(
     table::patrol();
     let marge = update_table(&message.src_ip_addr, &message.src_mac_addr).is_ok();
     let device = device.0.lock().unwrap();
-    let interface = device.interface.as_ref().ok_or(RuntimeError::new(format!("device `{}` has not ip interface.", device.name)))?;
+    let interface = device.interface.as_ref().ok_or(RuntimeError::new(format!(
+        "device `{}` has not ip interface.",
+        device.name
+    )))?;
     let src_ip_addr = interface.0.lock().unwrap().unicast.clone();
     if src_ip_addr == message.dst_ip_addr {
         if !marge {

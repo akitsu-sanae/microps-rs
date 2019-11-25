@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
-use std::error::Error;
+use crate::{frame, ip, util};
 use chrono::{DateTime, Utc};
-use crate::{ip, util, frame};
+use std::error::Error;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub struct Fragment {
@@ -35,10 +35,15 @@ impl Fragment {
 
     pub fn detach(&self) -> Result<Self, Box<dyn Error>> {
         let mut fragments = FRAGMENTS.lock().unwrap();
-        match fragments.iter().position(|fragment| fragment as *const Fragment == self as *const Fragment) {
-            None => Err(util::RuntimeError::new(format!("can not detach unregistered fragment! {:?}", self))),
-            Some(index) =>
-                Ok(fragments.remove(index))
+        match fragments
+            .iter()
+            .position(|fragment| fragment as *const Fragment == self as *const Fragment)
+        {
+            None => Err(util::RuntimeError::new(format!(
+                "can not detach unregistered fragment! {:?}",
+                self
+            ))),
+            Some(index) => Ok(fragments.remove(index)),
         }
     }
 }
@@ -56,4 +61,3 @@ pub fn patrol() {
         }
     });
 }
-
