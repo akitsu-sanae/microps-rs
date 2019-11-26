@@ -133,10 +133,6 @@ fn forward_process(_dgram: &mut Dgram, _interface: &ip::Interface) -> Result<(),
     unimplemented!()
 }
 
-fn fragment_process(_dgram: &Dgram) -> Result<fragment::Fragment, Box<dyn Error>> {
-    unimplemented!()
-}
-
 pub fn rx(
     dgram: frame::Bytes,
     device: &ethernet::Device,
@@ -164,16 +160,17 @@ pub fn rx(
     }
     dgram.dump();
 
+    let (src, dst, protocol_type) = (dgram.src, dgram.dst, dgram.protocol);
     let payload = if dgram.offset & 0x2000 != 0 || dgram.offset & 0x1ff != 0 {
-        let fragment = fragment_process(&dgram)?;
+        let fragment = fragment::process(*dgram)?;
         fragment.data
     } else {
         dgram.payload
     };
     let protocols = PROTOCOLS.lock().unwrap();
     for protocol in protocols.iter() {
-        if protocol.type_() == dgram.protocol {
-            protocol.handler(payload, dgram.src, dgram.dst, interface)?;
+        if protocol.type_() == protocol_type {
+            protocol.handler(payload, src, dst, interface)?;
             return Ok(None);
         }
     }

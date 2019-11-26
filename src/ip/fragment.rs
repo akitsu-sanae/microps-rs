@@ -9,7 +9,6 @@ pub struct Fragment {
     pub dst: frame::IpAddr,
     pub id: u16,
     pub protocol: ip::ProtocolType,
-    pub len: u16,
     pub data: frame::Bytes,
     pub mask: frame::Bytes,
     pub timestamp: Option<DateTime<Utc>>,
@@ -20,35 +19,20 @@ lazy_static! {
 }
 
 impl Fragment {
-    pub fn new(dgram: &ip::Dgram) -> Self {
+    fn new(dgram: &ip::Dgram) -> Self {
         Fragment {
             src: dgram.src.clone(),
             dst: dgram.dst.clone(),
             id: dgram.id.clone(),
             protocol: dgram.protocol,
-            len: 0,
-            data: frame::Bytes::empty(),
-            mask: frame::Bytes::empty(),
+            data: frame::Bytes::new(65535),
+            mask: frame::Bytes::new(2048),
             timestamp: None,
-        }
-    }
-
-    pub fn detach(&self) -> Result<Self, Box<dyn Error>> {
-        let mut fragments = FRAGMENTS.lock().unwrap();
-        match fragments
-            .iter()
-            .position(|fragment| fragment as *const Fragment == self as *const Fragment)
-        {
-            None => Err(util::RuntimeError::new(format!(
-                "can not detach unregistered fragment! {:?}",
-                self
-            ))),
-            Some(index) => Ok(fragments.remove(index)),
         }
     }
 }
 
-pub fn patrol() {
+fn patrol() {
     let now = Utc::now();
     let mut fragments = FRAGMENTS.lock().unwrap();
     const TIMEOUT_SEC: i64 = 30;
@@ -60,4 +44,69 @@ pub fn patrol() {
             false
         }
     });
+}
+
+fn lookup<Pred: Fn(&Fragment) -> bool>(pred: Pred) -> Option<Fragment> {
+    let mut fragments = FRAGMENTS.lock().unwrap();
+    fragments
+        .iter()
+        .position(pred)
+        .map(|index| fragments.remove(index))
+}
+
+lazy_static! {
+    static ref PREV_TIME: Arc<Mutex<DateTime<Utc>>> = Arc::new(Mutex::new(Utc::now()));
+    static ref FRAGMENT_COUNT: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
+}
+
+pub fn process(dgram: ip::Dgram) -> Result<Fragment, Box<dyn Error>> {
+    let mut prev_time = PREV_TIME.lock().unwrap();
+    let now = Utc::now();
+    if (now - *prev_time as DateTime<Utc>).num_seconds() < 10 {
+        patrol();
+    }
+    *prev_time = now;
+
+    let mut fragment = match lookup(|fragment| {
+        fragment.src == dgram.src
+            && fragment.dst == dgram.dst
+            && fragment.id == dgram.id
+            && fragment.protocol == dgram.protocol
+    }) {
+        Some(fragment) => fragment,
+        None => {
+            const NUM_MAX: i32 = 8;
+            let mut count = FRAGMENT_COUNT.lock().unwrap();
+            if *count >= NUM_MAX {
+                return Err(util::RuntimeError::new(format!("too many fragments")));
+            }
+            let fragment = Fragment::new(&dgram);
+            *count += 1;
+            fragment
+        }
+    };
+
+    let off = ((dgram.offset & 0x1fff) << 3) as usize;
+    let payload_len = dgram.payload.0.len();
+    fragment.data.write(off, dgram.payload);
+    // TODO: set mask data
+
+    fragment.timestamp = Some(Utc::now());
+    if dgram.offset & 0x2000 != 0 {
+        let mut fragments = FRAGMENTS.lock().unwrap();
+        fragments.push(fragment);
+        return Err(util::RuntimeError::new(format!("more fragments exists")));
+    }
+    fragment.data.0.resize(off + payload_len, 0);
+
+    if !check_mask(&fragment.mask, fragment.data.0.len()) {
+        return Err(util::RuntimeError::new(format!("imcomplete flagments")));
+    }
+    let mut count = FRAGMENT_COUNT.lock().unwrap();
+    *count -= 1;
+    Ok(fragment)
+}
+
+fn check_mask(_mask: &frame::Bytes, _data_len: usize) -> bool {
+    true // TODO: check!!
 }

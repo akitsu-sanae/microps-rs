@@ -49,7 +49,7 @@ impl fmt::Display for Bytes {
 pub const MAC_ADDR_LEN: usize = 6;
 pub const IP_ADDR_LEN: usize = 4;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MacAddr(pub [u8; MAC_ADDR_LEN]);
 
 impl MacAddr {
@@ -75,7 +75,7 @@ impl fmt::Display for MacAddr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IpAddr(pub [u8; IP_ADDR_LEN]);
 
 impl IpAddr {
@@ -142,6 +142,20 @@ impl Bytes {
     pub fn push_u32(&mut self, n: u32) {
         self.0
             .append(&mut n.to_be_bytes().iter().cloned().collect());
+    }
+    pub fn append(&mut self, mut buf: Bytes) {
+        self.0.append(&mut buf.0)
+    }
+    pub fn write(&mut self, pos: usize, mut buf: Bytes) {
+        let mut after = self.0.split_off(pos);
+        if buf.0.len() < after.len() {
+            let mut after = after.split_off(buf.0.len());
+            self.0.append(&mut buf.0);
+            self.0.append(&mut after);
+        } else {
+            buf.0.split_off(after.len());
+            self.0.append(&mut buf.0);
+        }
     }
 
     pub fn pop_mac_addr(&mut self, label: &str) -> Result<MacAddr, Box<dyn Error>> {
