@@ -109,11 +109,11 @@ impl Interface {
     pub fn new(inner: InterfaceImpl) -> Interface {
         Interface(Arc::new(Mutex::new(inner)))
     }
-    fn tx(
-        &mut self,
+    pub fn tx(
+        &self,
         _protocol: ProtocolType,
         _packet: frame::Bytes,
-        _dst: &Option<frame::IpAddr>,
+        _dst: &frame::IpAddr,
     ) -> Result<(), Box<dyn Error>> {
         unimplemented!()
     }

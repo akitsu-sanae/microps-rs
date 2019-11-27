@@ -204,6 +204,21 @@ impl Bytes {
             )))
         }
     }
+
+    pub fn pop_u32(&mut self, label: &str) -> Result<u32, Box<dyn Error>> {
+        if 4 <= self.0.len() {
+            let buf = self.0.split_off(4);
+            let buf = ::std::mem::replace(&mut self.0, buf);
+            let arr_vec: ArrayVec<[_; 4]> = buf.into_iter().collect();
+            Ok(u32::from_be_bytes(arr_vec.into_inner().unwrap()))
+        } else {
+            Err(util::RuntimeError::new(format!(
+                "cannot pop {} from {:?}",
+                label, self.0
+            )))
+        }
+    }
+
     pub fn pop_bytes(&mut self, len: usize, label: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         if len <= self.0.len() {
             let buf = self.0.split_off(len);
