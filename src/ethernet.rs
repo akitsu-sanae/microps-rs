@@ -100,6 +100,7 @@ impl frame::Frame for Frame {
         bytes.push_mac_addr(self.dst_addr);
         bytes.push_mac_addr(self.src_addr);
         bytes.push_u16(self.type_ as u16);
+        bytes.append(self.data);
         bytes
     }
 }
