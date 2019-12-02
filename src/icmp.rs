@@ -295,19 +295,6 @@ pub fn rx(
     Ok(())
 }
 
-fn calc_checksum(mut data: frame::Bytes, init: u32) -> u16 {
-    let mut sum = init;
-    while data.0.len() >= 2 {
-        sum += data.pop_u16("u16").unwrap() as u32;
-    }
-    if !data.0.is_empty() {
-        sum += data.pop_u8("u8").unwrap() as u32;
-    }
-    sum = (sum & 0xffff) + (sum >> 16);
-    sum = (sum & 0xffff) + (sum >> 16);
-    return !(sum as u16);
-}
-
 pub fn tx(
     interface: &ip::Interface,
     type_: Type,
@@ -320,10 +307,14 @@ pub fn tx(
         type_: type_,
         code: code,
         values: values,
-        sum: calc_checksum(data.clone(), 0),
+        sum: util::calc_checksum(data.clone(), 0),
         data: data,
     };
     use frame::Frame;
     let buf = frame.to_bytes();
     interface.tx(protocol::ProtocolType::Icmp, buf, dst)
+}
+
+pub fn length(dgram: &ip::Dgram) -> usize {
+    (((dgram.version_header_length & 0x0f) << 2) + 8) as usize
 }

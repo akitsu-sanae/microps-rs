@@ -1,3 +1,4 @@
+use crate::frame;
 use std::error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,4 +37,17 @@ pub fn ntohs(n: u16) -> u16 {
 
 pub fn hexdump(data: &Vec<u8>) {
     hexdump::hexdump(data.as_slice());
+}
+
+pub fn calc_checksum(mut data: frame::Bytes, init: u32) -> u16 {
+    let mut sum = init;
+    while data.0.len() >= 2 {
+        sum += data.pop_u16("u16").unwrap() as u32;
+    }
+    if !data.0.is_empty() {
+        sum += data.pop_u8("u8").unwrap() as u32;
+    }
+    sum = (sum & 0xffff) + (sum >> 16);
+    sum = (sum & 0xffff) + (sum >> 16);
+    return !(sum as u16);
 }

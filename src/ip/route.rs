@@ -6,7 +6,7 @@ use crate::{frame, ip::Interface};
 pub struct Route {
     pub network: frame::IpAddr,
     pub netmask: frame::IpAddr,
-    pub nexthop: frame::IpAddr,
+    pub nexthop: Option<frame::IpAddr>,
     pub interface: Interface,
 }
 

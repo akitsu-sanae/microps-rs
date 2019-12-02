@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use crate::{
-    ethernet, frame, ip,
+    ethernet, frame, icmp, ip,
     protocol::{Protocol, ProtocolType},
     util,
 };
@@ -129,8 +129,93 @@ pub fn set_is_forwarding(b: bool) {
     IS_FORWARDING.store(b, Ordering::Relaxed);
 }
 
-fn forward_process(_dgram: &mut Dgram, _interface: &ip::Interface) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
+fn forward_process(mut dgram: Dgram, interface: &ip::Interface) -> Result<(), Box<dyn Error>> {
+    use frame::Frame;
+    if dgram.time_to_live != 1 {
+        let src = dgram.src;
+        icmp::tx(
+            interface,
+            icmp::Type::TimeExceeded,
+            icmp::Code::Exceeded(icmp::CodeExceeded::Ttl),
+            0,
+            dgram.to_bytes(),
+            &src,
+        )?;
+        return Err(util::RuntimeError::new(format!("time exceeded")));
+    }
+    let route = match route::lookup(interface, dgram.dst) {
+        Some(route) => route,
+        None => {
+            let src = dgram.src;
+            icmp::tx(
+                interface,
+                icmp::Type::DestUnreach,
+                icmp::Code::Unreach(icmp::CodeUnreach::Net),
+                0,
+                dgram.to_bytes(),
+                &src,
+            )?;
+            return Err(util::RuntimeError::new(format!("destination unreach")));
+        }
+    };
+    {
+        let route_interface = route.interface.0.lock().unwrap();
+        let route_device = route_interface.device.clone();
+        if route_interface.unicast == dgram.dst {
+            ip::rx(dgram.to_bytes(), &route_device)?;
+            return Ok(());
+        }
+    }
+    if dgram.offset & 0x4000 != 0 && dgram.payload.0.len() > ethernet::PAYLOAD_SIZE_MAX {
+        let src = dgram.src;
+        return icmp::tx(
+            interface,
+            icmp::Type::DestUnreach,
+            icmp::Code::Unreach(icmp::CodeUnreach::FragmentNeeded),
+            0,
+            dgram.to_bytes(),
+            &src,
+        );
+        // return Err(util::RuntimeError::new(format!("destination unreach")));
+    }
+    dgram.time_to_live -= 1;
+    let sum = dgram.checksum;
+    dgram.checksum = util::calc_checksum(
+        dgram
+            .payload
+            .head(((dgram.version_header_length & 0x0f) as usize) << 2),
+        (u16::max_value() - dgram.checksum) as u32,
+    );
+    let ret = tx_device(
+        &route.interface,
+        &dgram,
+        &match route.nexthop {
+            Some(next) => next,
+            None => dgram.src,
+        },
+    );
+    match ret {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            // restore original IP header
+            dgram.time_to_live += 1;
+            dgram.checksum = sum;
+
+            let src = dgram.src;
+
+            icmp::tx(
+                interface,
+                icmp::Type::DestUnreach,
+                match route.nexthop {
+                    Some(_) => icmp::Code::Unreach(icmp::CodeUnreach::Net),
+                    None => icmp::Code::Unreach(icmp::CodeUnreach::Host),
+                },
+                0,
+                dgram.to_bytes(),
+                &src,
+            )
+        }
+    }
 }
 
 pub fn rx(
@@ -138,7 +223,7 @@ pub fn rx(
     device: &ethernet::Device,
 ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
     use frame::Frame;
-    let mut dgram = Dgram::from_bytes(dgram)?;
+    let dgram = Dgram::from_bytes(dgram)?;
     let device = device.0.lock().unwrap();
     let interface = device
         .interface
@@ -154,7 +239,7 @@ pub fn rx(
     if dgram.dst != unicast && dgram.dst != broadcast && dgram.dst != ADDR_BROADCAST {
         /* forward to other host */
         if IS_FORWARDING.load(Ordering::SeqCst) {
-            forward_process(&mut dgram, interface);
+            forward_process(*dgram, interface)?;
         }
         return Ok(None);
     }
@@ -175,4 +260,12 @@ pub fn rx(
         }
     }
     Err(util::RuntimeError::new(format!("no suitable protocol")))
+}
+
+pub fn tx_device(
+    _interface: &Interface,
+    _dgram: &Dgram,
+    _dst: &frame::IpAddr,
+) -> Result<(), Box<dyn Error>> {
+    unimplemented!()
 }
