@@ -86,7 +86,7 @@ impl IpAddr {
         IpAddr([0xff; IP_ADDR_LEN])
     }
 
-    pub fn from_str(str: String) -> Result<Self, Box<dyn Error>> {
+    pub fn from_str(str: &String) -> Result<Self, Box<dyn Error>> {
         str.split('.')
             .map(|n| u8::from_str_radix(n, 10))
             .collect::<Result<ArrayVec<[_; 4]>, _>>()
@@ -100,6 +100,32 @@ impl IpAddr {
             self.0[1] & mask.0[1],
             self.0[2] & mask.0[2],
             self.0[3] & mask.0[3],
+        ])
+    }
+}
+
+use std::ops::BitOr;
+impl BitOr for IpAddr {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        IpAddr([
+               self.0[0] | rhs.0[0],
+               self.0[1] | rhs.0[1],
+               self.0[2] | rhs.0[2],
+               self.0[3] | rhs.0[3],
+        ])
+    }
+}
+
+use std::ops::Not;
+impl Not for IpAddr {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        IpAddr([
+               !self.0[0],
+               !self.0[1],
+               !self.0[2],
+               !self.0[3],
         ])
     }
 }
