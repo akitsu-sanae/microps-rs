@@ -3,9 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use crate::{
-    ethernet, frame, icmp, ip,
+    arp, ethernet, frame, icmp, ip,
     protocol::{Protocol, ProtocolType},
-    arp,
     util,
 };
 
@@ -99,8 +98,8 @@ pub struct InterfaceImpl {
     pub device: ethernet::Device,
     pub unicast: frame::IpAddr,
     pub netmask: frame::IpAddr,
-    pub network: frame::IpAddr,
-    pub broadcast: frame::IpAddr,
+    // pub network: frame::IpAddr,
+    // pub broadcast: frame::IpAddr,
     pub gateway: frame::IpAddr,
 }
 
@@ -236,7 +235,9 @@ pub fn rx(
         )))?;
     let (unicast, broadcast) = {
         let interface = interface.0.lock().unwrap();
-        (interface.unicast.clone(), interface.broadcast.clone())
+        let network = interface.unicast.apply_mask(&interface.netmask);
+        let broadcast = network | !interface.netmask;
+        (interface.unicast.clone(), broadcast)
     };
     if dgram.dst != unicast && dgram.dst != broadcast && dgram.dst != ADDR_BROADCAST {
         /* forward to other host */
@@ -270,9 +271,10 @@ pub fn tx_device(
     dst: &Option<frame::IpAddr>,
 ) -> Result<(), Box<dyn Error>> {
     use ethernet::DeviceFlags;
-    let mac_addr = if DeviceFlags::BROADCAST & DeviceFlags::NOARP  == DeviceFlags::EMPTY {
+    let mac_addr = if DeviceFlags::BROADCAST & DeviceFlags::NOARP == DeviceFlags::EMPTY {
         match dst {
-            Some(dst) => match arp::resolve(interface, *dst, data.clone())? { // TODO: remove if possible
+            Some(dst) => match arp::resolve(interface, *dst, data.clone())? {
+                // TODO: remove if possible
                 Some(addr) => addr,
                 None => return Ok(()),
             },
