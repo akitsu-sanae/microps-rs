@@ -22,6 +22,7 @@ pub const ADDR_BROADCAST: frame::MacAddr = frame::MacAddr([255; ADDR_LEN]);
 
 bitflags! {
     pub struct DeviceFlags: u32 {
+        const EMPTY = 0x00;
         const BROADCAST = 0x01;
         const MULTICAST = 0x02;
         const P2P       = 0x04;

@@ -5,6 +5,7 @@ use std::thread::JoinHandle;
 use crate::{
     ethernet, frame, icmp, ip,
     protocol::{Protocol, ProtocolType},
+    arp,
     util,
 };
 
@@ -20,6 +21,7 @@ pub const PAYLOAD_MAX_SIZE: usize = 65535 - HEADER_MIN_SIZE;
 pub const ADDR_LEN: usize = 4;
 const ADDR_BROADCAST: frame::IpAddr = frame::IpAddr([255; ADDR_LEN]);
 
+#[derive(Debug, Clone)]
 pub struct Dgram {
     pub version_header_length: u8,
     pub type_of_service: u8,
@@ -188,10 +190,10 @@ fn forward_process(mut dgram: Dgram, interface: &ip::Interface) -> Result<(), Bo
     );
     let ret = tx_device(
         &route.interface,
-        &dgram,
+        dgram.clone().to_bytes(), // TODO: remove clone if possible
         &match route.nexthop {
-            Some(next) => next,
-            None => dgram.src,
+            Some(next) => Some(next),
+            None => Some(dgram.src),
         },
     );
     match ret {
@@ -263,9 +265,26 @@ pub fn rx(
 }
 
 pub fn tx_device(
-    _interface: &Interface,
-    _dgram: &Dgram,
-    _dst: &frame::IpAddr,
+    interface: &Interface,
+    data: frame::Bytes,
+    dst: &Option<frame::IpAddr>,
 ) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
+    use ethernet::DeviceFlags;
+    let mac_addr = if DeviceFlags::BROADCAST & DeviceFlags::NOARP  == DeviceFlags::EMPTY {
+        match dst {
+            Some(dst) => match arp::resolve(interface, *dst, data.clone())? { // TODO: remove if possible
+                Some(addr) => addr,
+                None => return Ok(()),
+            },
+            None => {
+                let interface = interface.0.lock().unwrap();
+                let device = interface.device.0.lock().unwrap();
+                device.broadcast_addr
+            }
+        }
+    } else {
+        frame::MacAddr::empty()
+    };
+    let interface = interface.0.lock().unwrap();
+    interface.device.tx(ethernet::Type::Ip, data, mac_addr)
 }
