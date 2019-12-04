@@ -1,5 +1,6 @@
 use crate::{frame, ip, protocol, util};
 use std::error::Error;
+use std::sync::Arc;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,3 +319,21 @@ pub fn tx(
 pub fn length(dgram: &ip::Dgram) -> usize {
     (((dgram.version_header_length & 0x0f) << 2) + 8) as usize
 }
+
+pub struct IcmpProtocol {}
+
+impl IcmpProtocol {
+    pub fn new() -> Arc<dyn protocol::Protocol + Send + Sync> {
+        Arc::new(IcmpProtocol {})
+    }
+}
+
+impl protocol::Protocol for IcmpProtocol {
+    fn type_(&self) -> protocol::ProtocolType {
+        protocol::ProtocolType::Icmp
+    }
+    fn handler(&self, payload: frame::Bytes, src: frame::IpAddr, dst: frame::IpAddr, interface: &ip::Interface) -> Result<(), Box<dyn Error>> {
+        self::rx(payload, &src, &dst, interface)
+    }
+}
+

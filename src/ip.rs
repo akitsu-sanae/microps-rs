@@ -32,7 +32,6 @@ pub struct Dgram {
     pub checksum: u16,
     pub src: frame::IpAddr,
     pub dst: frame::IpAddr,
-    pub options: Vec<u8>,
     pub payload: frame::Bytes,
 }
 
@@ -48,7 +47,6 @@ impl Dgram {
         eprintln!("checksum: {}", self.checksum);
         eprintln!("src: {}", self.src);
         eprintln!("dst: {}", self.dst);
-        eprintln!("options: {:?}", self.options); // TODO
         eprintln!("payload: {}", self.payload);
     }
 }
@@ -69,7 +67,6 @@ impl frame::Frame for Dgram {
         let checksum = bytes.pop_u16("checksum")?;
         let src = bytes.pop_ip_addr("src")?;
         let dst = bytes.pop_ip_addr("dst")?;
-        let options = bytes.pop_bytes(len as usize * 4 - 20, "options")?;
         let payload = bytes;
 
         Ok(Box::new(Dgram {
@@ -83,7 +80,6 @@ impl frame::Frame for Dgram {
             checksum: checksum,
             src: src,
             dst: dst,
-            options: options,
             payload: payload,
         }))
     }
@@ -98,8 +94,6 @@ pub struct InterfaceImpl {
     pub device: ethernet::Device,
     pub unicast: frame::IpAddr,
     pub netmask: frame::IpAddr,
-    // pub network: frame::IpAddr,
-    // pub broadcast: frame::IpAddr,
     pub gateway: frame::IpAddr,
 }
 
@@ -123,7 +117,9 @@ impl Interface {
 use std::sync::atomic::{AtomicBool, Ordering};
 lazy_static! {
     static ref IS_FORWARDING: AtomicBool = AtomicBool::new(false);
-    static ref PROTOCOLS: Mutex<Vec<Arc<dyn Protocol + Send + Sync>>> = Mutex::new(vec![]);
+    static ref PROTOCOLS: Mutex<Vec<Arc<dyn Protocol + Send + Sync>>> = Mutex::new(vec![
+        icmp::IcmpProtocol::new(),
+    ]);
 }
 
 pub fn set_is_forwarding(b: bool) {

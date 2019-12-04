@@ -63,7 +63,10 @@ fn main() {
         netmask: netmask,
         gateway: frame::IpAddr::empty(),
     });
-    // device.add_interface(interface).unwrap();
+    {
+        let mut inner = device.0.lock().unwrap();
+        inner.interface = Some(interface);
+    }
     device.run().unwrap();
     eprintln!("[{}]", ifname);
     while !TERMINATE.load(Ordering::SeqCst) {}
