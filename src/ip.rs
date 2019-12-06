@@ -106,20 +106,72 @@ impl Interface {
     }
     pub fn tx(
         &self,
-        _protocol: ProtocolType,
-        _packet: frame::Bytes,
-        _dst: &frame::IpAddr,
+        protocol: ProtocolType,
+        mut packet: frame::Bytes,
+        dst: &frame::IpAddr,
+    ) -> Result<(), Box<dyn Error>> {
+        let (nexthop, interface, src) = if dst == &ADDR_BROADCAST {
+            (None, self.clone(), None)
+        } else {
+            match route::lookup(None, dst.clone()) {
+                None => return Err(util::RuntimeError::new("ip no route to host".to_string())),
+                Some(route) => {
+                    let nexthop = Some(route.nexthop.unwrap_or(dst.clone()));
+                    let interface = route.interface;
+                    let src = Some(self.0.lock().unwrap().unicast.clone());
+                    (nexthop, interface, src)
+                }
+            }
+        };
+        let id = generate_id();
+
+        let mut segment_len: u16 = 0;
+        let mut done: u16 = 0;
+        while !packet.0.is_empty() {
+            segment_len = ::std::cmp::min(
+                packet.0.len() as u16,
+                ethernet::PAYLOAD_SIZE_MAX as u16 - ip::HEADER_MIN_SIZE as u16,
+            );
+            let flag: u16 = if segment_len < packet.0.len() as u16 {
+                0x2000
+            } else {
+                0x0000
+            };
+            let offset = flag | (done >> 3) & 0x1fff;
+            let segment = packet.head(segment_len as usize);
+            interface.tx_core(protocol, segment, src, dst.clone(), nexthop, id, offset)?;
+            done += segment_len as u16;
+        }
+        Ok(())
+    }
+
+    fn tx_core(
+        &self,
+        type_: ProtocolType,
+        buf: frame::Bytes,
+        src: Option<frame::IpAddr>,
+        dst: frame::IpAddr,
+        nexthop: Option<frame::IpAddr>,
+        id: u16,
+        offset: u16,
     ) -> Result<(), Box<dyn Error>> {
         unimplemented!()
     }
 }
 
+fn generate_id() -> u16 {
+    let mut id_counter = ID_COUNTER.lock().unwrap();
+    let ret = *id_counter;
+    *id_counter += 1;
+    ret
+}
+
 use std::sync::atomic::{AtomicBool, Ordering};
 lazy_static! {
     static ref IS_FORWARDING: AtomicBool = AtomicBool::new(false);
-    static ref PROTOCOLS: Mutex<Vec<Arc<dyn Protocol + Send + Sync>>> = Mutex::new(vec![
-        icmp::IcmpProtocol::new(),
-    ]);
+    static ref PROTOCOLS: Mutex<Vec<Arc<dyn Protocol + Send + Sync>>> =
+        Mutex::new(vec![icmp::IcmpProtocol::new()]);
+    static ref ID_COUNTER: Mutex<u16> = Mutex::new(128);
 }
 
 pub fn set_is_forwarding(b: bool) {
@@ -140,7 +192,7 @@ fn forward_process(mut dgram: Dgram, interface: &ip::Interface) -> Result<(), Bo
         )?;
         return Err(util::RuntimeError::new(format!("time exceeded")));
     }
-    let route = match route::lookup(interface, dgram.dst) {
+    let route = match route::lookup(Some(interface), dgram.dst) {
         Some(route) => route,
         None => {
             let src = dgram.src;

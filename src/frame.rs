@@ -109,10 +109,10 @@ impl BitOr for IpAddr {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self::Output {
         IpAddr([
-               self.0[0] | rhs.0[0],
-               self.0[1] | rhs.0[1],
-               self.0[2] | rhs.0[2],
-               self.0[3] | rhs.0[3],
+            self.0[0] | rhs.0[0],
+            self.0[1] | rhs.0[1],
+            self.0[2] | rhs.0[2],
+            self.0[3] | rhs.0[3],
         ])
     }
 }
@@ -121,12 +121,7 @@ use std::ops::Not;
 impl Not for IpAddr {
     type Output = Self;
     fn not(self) -> Self::Output {
-        IpAddr([
-               !self.0[0],
-               !self.0[1],
-               !self.0[2],
-               !self.0[3],
-        ])
+        IpAddr([!self.0[0], !self.0[1], !self.0[2], !self.0[3]])
     }
 }
 

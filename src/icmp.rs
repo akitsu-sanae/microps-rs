@@ -1,7 +1,7 @@
 use crate::{frame, ip, protocol, util};
 use std::error::Error;
-use std::sync::Arc;
 use std::fmt;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -332,8 +332,13 @@ impl protocol::Protocol for IcmpProtocol {
     fn type_(&self) -> protocol::ProtocolType {
         protocol::ProtocolType::Icmp
     }
-    fn handler(&self, payload: frame::Bytes, src: frame::IpAddr, dst: frame::IpAddr, interface: &ip::Interface) -> Result<(), Box<dyn Error>> {
+    fn handler(
+        &self,
+        payload: frame::Bytes,
+        src: frame::IpAddr,
+        dst: frame::IpAddr,
+        interface: &ip::Interface,
+    ) -> Result<(), Box<dyn Error>> {
         self::rx(payload, &src, &dst, interface)
     }
 }
-

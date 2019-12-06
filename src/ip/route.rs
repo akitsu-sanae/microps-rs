@@ -25,13 +25,16 @@ pub fn delete(interface: &Interface) {
         .retain(|route| &route.interface as *const Interface == interface as *const Interface);
 }
 
-pub fn lookup(interface: &Interface, dst: frame::IpAddr) -> Option<Route> {
+pub fn lookup(interface: Option<&Interface>, dst: frame::IpAddr) -> Option<Route> {
     let route_table = ROUTE_TABLE.lock().unwrap();
     let mut candidate = None;
     for route in route_table.iter() {
-        if dst.apply_mask(&route.netmask) == route.network
-            && &route.interface as *const Interface == interface as *const Interface
-        {
+        let is_same_interface = if let Some(interface) = interface {
+            &route.interface as *const Interface == interface as *const Interface
+        } else {
+            true
+        };
+        if dst.apply_mask(&route.netmask) == route.network && is_same_interface {
             match candidate {
                 None => candidate = Some(route.clone()),
                 Some(c) if c.netmask < route.netmask => {
