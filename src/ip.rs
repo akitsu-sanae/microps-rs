@@ -11,7 +11,7 @@ use crate::{
 mod fragment;
 mod route;
 
-pub const VERSION: usize = 4;
+pub const VERSION: u8 = 4;
 
 pub const HEADER_MIN_SIZE: usize = 20;
 pub const HEADER_MAX_SIZE: usize = 60;
@@ -19,6 +19,8 @@ pub const PAYLOAD_MAX_SIZE: usize = 65535 - HEADER_MIN_SIZE;
 
 pub const ADDR_LEN: usize = 4;
 const ADDR_BROADCAST: frame::IpAddr = frame::IpAddr([255; ADDR_LEN]);
+
+const HEADER_LEN: u8 = 1+1+2+2+2+1+1+2+4+4+1;
 
 #[derive(Debug, Clone)]
 pub struct Dgram {
@@ -85,7 +87,20 @@ impl frame::Frame for Dgram {
     }
 
     fn to_bytes(self) -> frame::Bytes {
-        unimplemented!()
+        let mut bytes = frame::Bytes::new(HEADER_MAX_SIZE);
+        bytes.push_u8(self.version_header_length);
+        bytes.push_u8(self.type_of_service);
+        bytes.push_u16(self.len);
+        bytes.push_u16(self.id);
+        bytes.push_u16(self.offset);
+        bytes.push_u8(self.time_to_live);
+        bytes.push_u8(self.protocol as u8);
+        bytes.push_u16(self.checksum);
+        bytes.push_ip_addr(self.src);
+        bytes.push_ip_addr(self.dst);
+        bytes.append(self.payload);
+
+        bytes
     }
 }
 
@@ -155,7 +170,30 @@ impl Interface {
         id: u16,
         offset: u16,
     ) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+
+        let mut dgram = Dgram {
+            version_header_length: (VERSION << 4) | (HEADER_LEN >> 2),
+            type_of_service: 0,
+            len:HEADER_LEN as u16 + buf.0.len() as u16,
+            id: id,
+            offset: offset,
+            time_to_live: 0xff,
+            protocol: type_,
+            checksum: 0,
+            src: match src {
+                Some(src) => src,
+                None => {
+                    let impl_ = self.0.lock().unwrap();
+                    impl_.unicast
+                },
+            },
+            dst : dst,
+            payload: frame::Bytes::empty(),
+        };
+        use frame::Frame;
+        dgram.checksum = util::calc_checksum(dgram.clone().to_bytes(), 0); // TODO: remove `clone` if possible
+        dgram.payload = buf;
+        tx_device(self, dgram.to_bytes(), &nexthop)
     }
 }
 
