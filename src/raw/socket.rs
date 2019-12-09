@@ -1,6 +1,6 @@
 use super::{RawDevice, Type};
-use crate::ethernet::ADDR_LEN;
-use crate::frame::{Bytes, MacAddr};
+use crate::buffer::Buffer;
+use crate::ethernet::{MacAddr, ADDR_LEN};
 use crate::util::*;
 use ifstructs::ifreq;
 use libc::{self, pollfd, ETH_P_ALL, POLLIN};
@@ -112,7 +112,7 @@ impl RawDevice for Device {
 
     fn rx(
         &self,
-        callback: Box<dyn FnOnce(Bytes) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>>,
+        callback: Box<dyn FnOnce(Buffer) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>>,
         timeout: i32,
     ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
         let mut pfd = pollfd {
@@ -143,10 +143,10 @@ impl RawDevice for Device {
         .try_into()
         .unwrap();
         buf.resize(len, 0);
-        callback(Bytes::from_vec(buf))
+        callback(Buffer::from_vec(buf))
     }
 
-    fn tx(&self, _buf: Bytes) -> Result<(), Box<dyn Error>> {
+    fn tx(&self, _buf: Buffer) -> Result<(), Box<dyn Error>> {
         unimplemented!()
     }
 }

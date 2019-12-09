@@ -1,3 +1,4 @@
+mod frame;
 mod table;
 
 use std::error::Error;
@@ -6,12 +7,7 @@ use std::thread::{self, JoinHandle};
 use chrono::Utc;
 use nix::errno::{errno, Errno};
 
-use crate::{
-    ethernet,
-    frame::{self, Frame},
-    ip,
-    util::RuntimeError,
-};
+use crate::{buffer::Buffer, ethernet, ip, packet::Packet, util::RuntimeError};
 
 const HARDWARE_TYPE_ETHERNET: u16 = 0x0001;
 
@@ -48,102 +44,7 @@ impl fmt::Display for Op {
     }
 }
 
-#[derive(Debug)]
-pub struct ArpFrame {
-    pub op: Op,
-    pub src_mac_addr: frame::MacAddr,
-    pub src_ip_addr: frame::IpAddr,
-    pub dst_mac_addr: frame::MacAddr,
-    pub dst_ip_addr: frame::IpAddr,
-}
-
-const FRAME_SIZE: usize = 52;
-
-impl ArpFrame {
-    pub fn dump(&self) {
-        eprintln!("op: {}", self.op);
-        eprintln!("src mac addr: {}", self.src_mac_addr);
-        eprintln!("src ip addr: {}", self.src_ip_addr);
-        eprintln!("dst mac addr: {}", self.dst_mac_addr);
-        eprintln!("dst ip addr: {}", self.dst_ip_addr);
-    }
-}
-
-impl frame::Frame for ArpFrame {
-    fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
-        let hardware_type = bytes.pop_u16("hardware type")?;
-        if hardware_type != HARDWARE_TYPE_ETHERNET {
-            return Err(RuntimeError::new(format!(
-                "hardware type must be {}, but {}",
-                HARDWARE_TYPE_ETHERNET, hardware_type
-            )));
-        }
-
-        let protocol = bytes.pop_u16("protocol type")?;
-        if protocol != ethernet::Type::Ip as u16 {
-            return Err(RuntimeError::new(format!(
-                "protocol type must be {}, but {}",
-                ethernet::Type::Ip as u16,
-                protocol
-            )));
-        }
-
-        let hardware_address_len = bytes.pop_u8("hardware address length")?;
-        if hardware_address_len as usize != frame::MAC_ADDR_LEN {
-            return Err(RuntimeError::new(format!(
-                "hardware address length must be {}, but {}",
-                frame::MAC_ADDR_LEN,
-                hardware_address_len
-            )));
-        }
-
-        let ip_address_len = bytes.pop_u8("ip address length")?;
-        if ip_address_len as usize != frame::IP_ADDR_LEN {
-            return Err(RuntimeError::new(format!(
-                "ip address length must be {}, but {}",
-                frame::IP_ADDR_LEN,
-                ip_address_len
-            )));
-        }
-
-        let op: u16 = bytes.pop_u16("operation")?;
-        let op = if op == Op::Request as u16 {
-            Op::Request
-        } else if op == Op::Reply as u16 {
-            Op::Reply
-        } else {
-            return Err(RuntimeError::new(format!("invalid operation: {}", op)));
-        };
-        let src_mac_addr = bytes.pop_mac_addr("src mac address")?;
-        let src_ip_addr = bytes.pop_ip_addr("src ip address")?;
-        let dst_mac_addr = bytes.pop_mac_addr("dst mac address")?;
-        let dst_ip_addr = bytes.pop_ip_addr("dst ip address")?;
-
-        Ok(Box::new(ArpFrame {
-            op: op,
-            src_mac_addr: src_mac_addr,
-            src_ip_addr: src_ip_addr,
-            dst_mac_addr: dst_mac_addr,
-            dst_ip_addr: dst_ip_addr,
-        }))
-    }
-    fn to_bytes(self) -> frame::Bytes {
-        use std::convert::TryInto;
-        let mut bytes = frame::Bytes::new(FRAME_SIZE);
-        bytes.push_u16(HARDWARE_TYPE_ETHERNET);
-        bytes.push_u16(ethernet::Type::Ip as u16);
-        bytes.push_u8(frame::MAC_ADDR_LEN.try_into().unwrap());
-        bytes.push_u8(frame::IP_ADDR_LEN.try_into().unwrap());
-        bytes.push_u16(self.op as u16);
-        bytes.push_mac_addr(self.src_mac_addr);
-        bytes.push_ip_addr(self.src_ip_addr);
-        bytes.push_mac_addr(self.dst_mac_addr);
-        bytes.push_ip_addr(self.dst_ip_addr);
-        bytes
-    }
-}
-
-fn update_table(ip_addr: &frame::IpAddr, mac_addr: &frame::MacAddr) -> Result<(), Box<dyn Error>> {
+fn update_table(ip_addr: &ip::Addr, mac_addr: &ethernet::MacAddr) -> Result<(), Box<dyn Error>> {
     let idx = table::lookup(ip_addr).ok_or(RuntimeError::new(format!(
         "not found in table: {}",
         ip_addr
@@ -164,17 +65,20 @@ fn update_table(ip_addr: &frame::IpAddr, mac_addr: &frame::MacAddr) -> Result<()
     Ok(())
 }
 
-fn send_request(interface: &ip::Interface, ip_addr: &frame::IpAddr) -> Result<(), Box<dyn Error>> {
+fn send_request(
+    interface: &ip::interface::Interface,
+    ip_addr: &ip::Addr,
+) -> Result<(), Box<dyn Error>> {
     let (src_mac_addr, src_ip_addr) = {
         let interface_inner = interface.0.lock().unwrap();
         let device_inner = interface_inner.device.0.lock().unwrap();
         (device_inner.addr.clone(), interface_inner.unicast.clone())
     };
-    let request = ArpFrame {
+    let request = frame::Frame {
         op: Op::Request,
         src_mac_addr: src_mac_addr,
         src_ip_addr: src_ip_addr,
-        dst_mac_addr: frame::MacAddr::empty(),
+        dst_mac_addr: ethernet::MacAddr::empty(),
         dst_ip_addr: ip_addr.clone(),
     };
     let device = {
@@ -183,17 +87,17 @@ fn send_request(interface: &ip::Interface, ip_addr: &frame::IpAddr) -> Result<()
     };
     device.tx(
         ethernet::Type::Arp,
-        request.to_bytes(),
+        request.to_buffer(),
         ethernet::ADDR_BROADCAST.clone(),
     )?;
     Ok(())
 }
 
 fn send_reply(
-    interface: ip::Interface,
-    mac_addr: frame::MacAddr,
-    ip_addr: frame::IpAddr,
-    dst_addr: frame::MacAddr,
+    interface: ip::interface::Interface,
+    mac_addr: ethernet::MacAddr,
+    ip_addr: ip::Addr,
+    dst_addr: ethernet::MacAddr,
 ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
     Ok(Some(thread::spawn(move || {
         let (src_mac_addr, src_ip_addr, device) = {
@@ -205,7 +109,7 @@ fn send_reply(
                 interface_inner.device.clone(),
             )
         };
-        let reply = ArpFrame {
+        let reply = frame::Frame {
             op: Op::Reply,
             src_mac_addr: src_mac_addr,
             src_ip_addr: src_ip_addr,
@@ -215,17 +119,17 @@ fn send_reply(
         eprintln!(">>> arp reply <<<");
         reply.dump();
         device
-            .tx(ethernet::Type::Arp, reply.to_bytes(), dst_addr)
+            .tx(ethernet::Type::Arp, reply.to_buffer(), dst_addr)
             .unwrap();
         ()
     })))
 }
 
 pub fn resolve(
-    ip_interface: &ip::Interface,
-    ip_addr: frame::IpAddr,
-    data: frame::Bytes,
-) -> Result<Option<frame::MacAddr>, Box<dyn Error>> {
+    ip_interface: &ip::interface::Interface,
+    ip_addr: ip::Addr,
+    data: Buffer,
+) -> Result<Option<ethernet::MacAddr>, Box<dyn Error>> {
     match table::lookup(&ip_addr) {
         Some(idx) => {
             let (timeout, mac_addr) = {
@@ -258,7 +162,7 @@ pub fn resolve(
         None => {
             let mut new_entry = table::Entry::new(
                 ip_addr.clone(),
-                frame::MacAddr::empty(),
+                ethernet::MacAddr::empty(),
                 ip_interface.clone(),
             );
             new_entry.data = data;
@@ -270,10 +174,10 @@ pub fn resolve(
 }
 
 pub fn rx(
-    packet: frame::Bytes,
+    packet: Buffer,
     device: &ethernet::Device,
 ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
-    let message = self::ArpFrame::from_bytes(packet).unwrap();
+    let message = frame::Frame::from_buffer(packet).unwrap();
     table::patrol();
     let marge = update_table(&message.src_ip_addr, &message.src_mac_addr).is_ok();
     let device = device.0.lock().unwrap();

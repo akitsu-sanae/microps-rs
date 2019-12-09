@@ -1,4 +1,4 @@
-use crate::frame;
+use crate::buffer::Buffer;
 use std::error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +39,7 @@ pub fn hexdump(data: &Vec<u8>) {
     hexdump::hexdump(data.as_slice());
 }
 
-pub fn calc_checksum(mut data: frame::Bytes, init: u32) -> u16 {
+pub fn calc_checksum(mut data: Buffer, init: u32) -> u16 {
     let mut sum = init;
     while data.0.len() >= 2 {
         sum += data.pop_u16("u16").unwrap() as u32;

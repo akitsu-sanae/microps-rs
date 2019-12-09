@@ -3,30 +3,30 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use chrono::{DateTime, Duration, Utc};
 
-use crate::{frame, ip, util::RuntimeError};
+use crate::{buffer::Buffer, ethernet, ip, util::RuntimeError};
 
 #[derive(Debug)]
 pub struct Entry {
-    pub ip_addr: frame::IpAddr,
-    pub mac_addr: frame::MacAddr,
+    pub ip_addr: ip::Addr,
+    pub mac_addr: ethernet::MacAddr,
     pub timestamp: DateTime<Utc>,
     pub cond: Condvar,
-    pub data: frame::Bytes,
-    pub interface: ip::Interface,
+    pub data: Buffer,
+    pub interface: ip::interface::Interface,
 }
 
 impl Entry {
     pub fn new(
-        ip_addr: frame::IpAddr,
-        mac_addr: frame::MacAddr,
-        interface: ip::Interface,
+        ip_addr: ip::Addr,
+        mac_addr: ethernet::MacAddr,
+        interface: ip::interface::Interface,
     ) -> Entry {
         Entry {
             ip_addr: ip_addr,
             mac_addr: mac_addr,
             timestamp: Utc::now(),
             cond: Condvar::new(),
-            data: frame::Bytes::empty(),
+            data: Buffer::empty(),
             interface: interface,
         }
     }
@@ -37,7 +37,7 @@ lazy_static! {
     static ref TIMESTAMP: Mutex<DateTime<Utc>> = Mutex::new(Utc::now());
 }
 
-pub fn lookup(ip_addr: &frame::IpAddr) -> Option<usize> {
+pub fn lookup(ip_addr: &ip::Addr) -> Option<usize> {
     let table = TABLE.lock().unwrap();
     for (idx, entry) in table.iter().enumerate() {
         if &entry.ip_addr == ip_addr {

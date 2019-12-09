@@ -1,4 +1,4 @@
-use crate::frame::{Bytes, MacAddr};
+use crate::{buffer::Buffer, ethernet::MacAddr};
 use std::error::Error;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -23,10 +23,10 @@ pub trait RawDevice: Debug {
     fn close(&self) -> Result<(), Box<dyn Error>>;
     fn rx(
         &self,
-        callback: Box<dyn FnOnce(Bytes) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>>,
+        callback: Box<dyn FnOnce(Buffer) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>>,
         timeout: i32,
     ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>>;
-    fn tx(&self, buf: Bytes) -> Result<(), Box<dyn Error>>;
+    fn tx(&self, buf: Buffer) -> Result<(), Box<dyn Error>>;
 
     fn type_(&self) -> Type;
     fn name(&self) -> &String;

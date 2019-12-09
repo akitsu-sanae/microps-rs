@@ -1,5 +1,6 @@
-use crate::{frame, ip};
+use crate::{buffer, icmp, ip};
 use std::error::Error;
+use std::sync::{Arc, Mutex};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,9 +47,14 @@ pub trait Protocol {
     fn type_(&self) -> ProtocolType;
     fn handler(
         &self,
-        payload: frame::Bytes,
-        src: frame::IpAddr,
-        dst: frame::IpAddr,
-        interface: &ip::Interface,
+        payload: buffer::Buffer,
+        src: ip::Addr,
+        dst: ip::Addr,
+        interface: &ip::interface::Interface,
     ) -> Result<(), Box<dyn Error>>;
+}
+
+lazy_static! {
+    pub static ref PROTOCOLS: Mutex<Vec<Arc<dyn Protocol + Send + Sync>>> =
+        Mutex::new(vec![icmp::IcmpProtocol::new()]);
 }

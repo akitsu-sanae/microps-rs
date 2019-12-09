@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{frame, ip::Interface};
+use crate::ip::{self, interface::Interface};
 
 #[derive(Debug, Clone)]
 pub struct Route {
-    pub network: frame::IpAddr,
-    pub netmask: frame::IpAddr,
-    pub nexthop: Option<frame::IpAddr>,
+    pub network: ip::Addr,
+    pub netmask: ip::Addr,
+    pub nexthop: Option<ip::Addr>,
     pub interface: Interface,
 }
 
@@ -25,7 +25,7 @@ pub fn delete(interface: &Interface) {
         .retain(|route| &route.interface as *const Interface == interface as *const Interface);
 }
 
-pub fn lookup(interface: Option<&Interface>, dst: frame::IpAddr) -> Option<Route> {
+pub fn lookup(interface: Option<&Interface>, dst: ip::Addr) -> Option<Route> {
     let route_table = ROUTE_TABLE.lock().unwrap();
     let mut candidate = None;
     for route in route_table.iter() {

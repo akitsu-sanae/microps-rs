@@ -3,9 +3,12 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use arrayvec::ArrayVec;
 use bitflags::bitflags;
 
-use crate::{arp, frame, ip, raw, util::RuntimeError};
+use crate::{arp, buffer::Buffer, ip, packet, raw, util::RuntimeError};
+
+mod frame;
 
 pub const ADDR_LEN: usize = 6;
 pub const ADDR_STR_LEN: usize = 18;
@@ -17,8 +20,34 @@ pub const FRAME_SIZE_MAX: usize = 1518;
 pub const PAYLOAD_SIZE_MIN: usize = FRAME_SIZE_MIN - (HDR_SIZE + TRL_SIZE);
 pub const PAYLOAD_SIZE_MAX: usize = FRAME_SIZE_MAX - (HDR_SIZE + TRL_SIZE);
 
-pub const ADDR_ANY: frame::MacAddr = frame::MacAddr([0; ADDR_LEN]);
-pub const ADDR_BROADCAST: frame::MacAddr = frame::MacAddr([255; ADDR_LEN]);
+pub const ADDR_ANY: MacAddr = MacAddr([0; ADDR_LEN]);
+pub const ADDR_BROADCAST: MacAddr = MacAddr([255; ADDR_LEN]);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MacAddr(pub [u8; ADDR_LEN]);
+
+impl MacAddr {
+    pub fn empty() -> MacAddr {
+        MacAddr([0; ADDR_LEN])
+    }
+    pub fn from_str(str: &String) -> Result<Self, Box<dyn Error>> {
+        str.split(':')
+            .map(|n| u8::from_str_radix(n, 16))
+            .collect::<Result<ArrayVec<[_; 6]>, _>>()
+            .map(|arr| Self(arr.into_inner().unwrap()))
+            .or_else(|err| Err(RuntimeError::new(format!("{}", err))))
+    }
+}
+
+impl fmt::Display for MacAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{:X?}:{:X?}:{:X?}:{:X?}:{:X?}:{:X?}",
+            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
+        )
+    }
+}
 
 bitflags! {
     pub struct DeviceFlags: u32 {
@@ -66,46 +95,6 @@ impl fmt::Display for Type {
     }
 }
 
-pub struct Frame {
-    pub dst_addr: frame::MacAddr,
-    pub src_addr: frame::MacAddr,
-    pub type_: Type,
-    pub data: frame::Bytes,
-}
-
-impl Frame {
-    pub fn dump(&self) {
-        eprintln!("dst : {}", self.dst_addr);
-        eprintln!("src : {}", self.src_addr);
-        eprintln!("type: {}", self.type_);
-        eprintln!("{}", self.data);
-    }
-}
-
-impl frame::Frame for Frame {
-    fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
-        let dst_addr = bytes.pop_mac_addr("dst addr")?;
-        let src_addr = bytes.pop_mac_addr("src addr")?;
-        let n = bytes.pop_u16("type")?;
-        let type_ =
-            Type::from_u16(n).ok_or(RuntimeError::new(format!("{} can not be EthernetType", n)))?;
-        Ok(Box::new(Frame {
-            dst_addr: dst_addr,
-            src_addr: src_addr,
-            type_: type_,
-            data: bytes,
-        }))
-    }
-    fn to_bytes(self) -> frame::Bytes {
-        let mut bytes = frame::Bytes::new(FRAME_SIZE_MAX);
-        bytes.push_mac_addr(self.dst_addr);
-        bytes.push_mac_addr(self.src_addr);
-        bytes.push_u16(self.type_ as u16);
-        bytes.append(self.data);
-        bytes
-    }
-}
-
 lazy_static! {
     static ref JOIN_HANDLES: Mutex<HashMap<String, thread::JoinHandle<()>>> =
         Mutex::new(HashMap::new());
@@ -113,11 +102,11 @@ lazy_static! {
 
 #[derive(Debug, Clone)]
 pub struct DeviceImpl {
-    pub interface: Option<ip::Interface>,
+    pub interface: Option<ip::interface::Interface>,
     pub name: String,
     pub raw: Arc<dyn raw::RawDevice + Sync + Send>,
-    pub addr: frame::MacAddr,
-    pub broadcast_addr: frame::MacAddr,
+    pub addr: MacAddr,
+    pub broadcast_addr: MacAddr,
     pub terminate: bool,
 }
 
@@ -127,7 +116,7 @@ pub struct Device(pub Arc<Mutex<DeviceImpl>>);
 impl Device {
     pub fn open(
         name: &str,
-        mut addr: frame::MacAddr,
+        mut addr: MacAddr,
         raw_type: raw::Type,
     ) -> Result<Device, Box<dyn Error>> {
         let raw = raw::open(raw_type, name);
@@ -168,7 +157,7 @@ impl Device {
             if terminate {
                 break;
             }
-            let tx_handle = raw.rx(Box::new(move |buf: frame::Bytes| device_.rx(buf)), 1000);
+            let tx_handle = raw.rx(Box::new(move |buf: Buffer| device_.rx(buf)), 1000);
             match tx_handle {
                 Ok(Some(tx_join_handle)) => {
                     tx_join_handle.join().unwrap();
@@ -188,36 +177,33 @@ impl Device {
     pub fn tx(
         &self,
         type_: Type,
-        payload: frame::Bytes,
-        dst_addr: frame::MacAddr,
+        payload: Buffer,
+        dst_addr: MacAddr,
     ) -> Result<(), Box<dyn Error>> {
-        use crate::frame::Frame;
         let device_inner = self.0.lock().unwrap();
         let src_addr = device_inner.addr.clone();
-        let frame = self::Frame {
+        let frame = frame::Frame {
             dst_addr: dst_addr,
             src_addr: src_addr,
             type_: type_,
-            data: payload,
+            payload: payload,
         };
-        device_inner.raw.tx(frame.to_bytes())
+        use packet::Packet;
+        device_inner.raw.tx(frame.to_buffer())
     }
 
-    pub fn rx(
-        &self,
-        bytes: frame::Bytes,
-    ) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
-        use frame::Frame;
-        let frame = self::Frame::from_bytes(bytes)?;
+    pub fn rx(&self, buffer: Buffer) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
+        use packet::Packet;
+        let frame = frame::Frame::from_buffer(buffer)?;
         let type_ = frame.type_;
-        let payload = frame.data;
+        let payload = frame.payload;
         self.rx_handler(type_, payload)
     }
 
     fn rx_handler(
         &self,
         type_: Type,
-        payload: frame::Bytes,
+        payload: Buffer,
     ) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
         match type_ {
             Type::Arp => arp::rx(payload, self),

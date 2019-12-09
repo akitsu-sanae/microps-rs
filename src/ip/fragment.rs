@@ -1,16 +1,16 @@
-use crate::{frame, ip, util};
+use crate::{buffer::Buffer, ip, util};
 use chrono::{DateTime, Utc};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub struct Fragment {
-    pub src: frame::IpAddr,
-    pub dst: frame::IpAddr,
+    pub src: ip::Addr,
+    pub dst: ip::Addr,
     pub id: u16,
     pub protocol: ip::ProtocolType,
-    pub data: frame::Bytes,
-    pub mask: frame::Bytes,
+    pub data: Buffer,
+    pub mask: Buffer,
     pub timestamp: Option<DateTime<Utc>>,
 }
 
@@ -19,14 +19,14 @@ lazy_static! {
 }
 
 impl Fragment {
-    fn new(dgram: &ip::Dgram) -> Self {
+    fn new(dgram: &ip::dgram::Dgram) -> Self {
         Fragment {
             src: dgram.src.clone(),
             dst: dgram.dst.clone(),
             id: dgram.id.clone(),
             protocol: dgram.protocol,
-            data: frame::Bytes::new(65535),
-            mask: frame::Bytes::new(2048),
+            data: Buffer::new(65535),
+            mask: Buffer::new(2048),
             timestamp: None,
         }
     }
@@ -59,7 +59,7 @@ lazy_static! {
     static ref FRAGMENT_COUNT: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
 }
 
-pub fn process(dgram: ip::Dgram) -> Result<Fragment, Box<dyn Error>> {
+pub fn process(dgram: ip::dgram::Dgram) -> Result<Fragment, Box<dyn Error>> {
     let mut prev_time = PREV_TIME.lock().unwrap();
     let now = Utc::now();
     if (now - *prev_time as DateTime<Utc>).num_seconds() < 10 {
@@ -107,6 +107,6 @@ pub fn process(dgram: ip::Dgram) -> Result<Fragment, Box<dyn Error>> {
     Ok(fragment)
 }
 
-fn check_mask(_mask: &frame::Bytes, _data_len: usize) -> bool {
+fn check_mask(_mask: &Buffer, _data_len: usize) -> bool {
     true // TODO: check!!
 }

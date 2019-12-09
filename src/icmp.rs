@@ -1,4 +1,4 @@
-use crate::{frame, ip, protocol, util};
+use crate::{buffer::Buffer, ip, packet, protocol, util};
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
@@ -228,7 +228,7 @@ struct IcmpFrame {
     pub code: Code,
     pub values: u32,
     pub sum: u16,
-    pub data: frame::Bytes,
+    pub payload: Buffer,
 }
 
 impl IcmpFrame {
@@ -236,60 +236,59 @@ impl IcmpFrame {
         eprintln!("type: {}", self.type_);
         eprintln!("code: {:?}", self.code);
         eprintln!("sum: {}", self.sum);
-        eprintln!("{}", self.data);
+        eprintln!("{}", self.payload);
     }
 }
 
-impl frame::Frame for IcmpFrame {
-    fn from_bytes(mut bytes: frame::Bytes) -> Result<Box<Self>, Box<dyn Error>> {
-        let n = bytes.pop_u8("type")?;
+impl packet::Packet<IcmpFrame> for IcmpFrame {
+    fn from_buffer(mut buf: Buffer) -> Result<Self, Box<dyn Error>> {
+        let n = buf.pop_u8("type")?;
         let type_ = Type::from_u8(n).ok_or(util::RuntimeError::new(format!(
             "{} can not be ICMP type.",
             n
         )))?;
-        let n = bytes.pop_u8("code")?;
+        let n = buf.pop_u8("code")?;
         let code = Code::from_u8(n, type_).ok_or(util::RuntimeError::new(format!(
             "{} can not be ICMP code under {}",
             n, type_
         )))?;
-        let sum = bytes.pop_u16("sum")?;
-        let values = bytes.pop_u32("values")?;
+        let sum = buf.pop_u16("sum")?;
+        let values = buf.pop_u32("values")?;
 
-        Ok(Box::new(IcmpFrame {
+        Ok(IcmpFrame {
             type_: type_,
             code: code,
             sum: sum,
             values: values,
-            data: bytes,
-        }))
+            payload: buf,
+        })
     }
-    fn to_bytes(self) -> frame::Bytes {
-        let mut bytes = frame::Bytes::new(64 + self.data.0.len());
-        bytes.push_u8(self.type_ as u8);
-        bytes.push_u8(self.code.to_u8());
-        bytes.push_u32(self.values);
-        bytes.push_u16(self.sum);
-        bytes.append(self.data);
-        bytes
+    fn to_buffer(self) -> Buffer {
+        let mut buffer = Buffer::new(64 + self.payload.0.len());
+        buffer.push_u8(self.type_ as u8);
+        buffer.push_u8(self.code.to_u8());
+        buffer.push_u32(self.values);
+        buffer.push_u16(self.sum);
+        buffer.append(self.payload);
+        buffer
     }
 }
 
 pub fn rx(
-    packet: frame::Bytes,
-    src: &frame::IpAddr,
-    _dst: &frame::IpAddr,
-    interface: &ip::Interface,
+    packet: Buffer,
+    src: &ip::Addr,
+    _dst: &ip::Addr,
+    interface: &ip::interface::Interface,
 ) -> Result<(), Box<dyn Error>> {
-    use frame::Frame;
-    let frame: Result<Box<IcmpFrame>, _> = IcmpFrame::from_bytes(packet);
-    let frame: Box<IcmpFrame> = frame?;
+    use packet::Packet;
+    let frame = IcmpFrame::from_buffer(packet)?;
     if frame.type_ == Type::Echo {
         self::tx(
             interface,
             Type::EchoReply,
             frame.code,
             frame.values,
-            frame.data,
+            frame.payload,
             src,
         )?;
     }
@@ -297,26 +296,26 @@ pub fn rx(
 }
 
 pub fn tx(
-    interface: &ip::Interface,
+    interface: &ip::interface::Interface,
     type_: Type,
     code: Code,
     values: u32,
-    data: frame::Bytes,
-    dst: &frame::IpAddr,
+    payload: Buffer,
+    dst: &ip::Addr,
 ) -> Result<(), Box<dyn Error>> {
     let frame: IcmpFrame = IcmpFrame {
         type_: type_,
         code: code,
         values: values,
-        sum: util::calc_checksum(data.clone(), 0),
-        data: data,
+        sum: util::calc_checksum(payload.clone(), 0),
+        payload: payload,
     };
-    use frame::Frame;
-    let buf = frame.to_bytes();
+    use packet::Packet;
+    let buf = frame.to_buffer();
     interface.tx(protocol::ProtocolType::Icmp, buf, dst)
 }
 
-pub fn length(dgram: &ip::Dgram) -> usize {
+pub fn length(dgram: &ip::dgram::Dgram) -> usize {
     (((dgram.version_header_length & 0x0f) << 2) + 8) as usize
 }
 
@@ -334,10 +333,10 @@ impl protocol::Protocol for IcmpProtocol {
     }
     fn handler(
         &self,
-        payload: frame::Bytes,
-        src: frame::IpAddr,
-        dst: frame::IpAddr,
-        interface: &ip::Interface,
+        payload: Buffer,
+        src: ip::Addr,
+        dst: ip::Addr,
+        interface: &ip::interface::Interface,
     ) -> Result<(), Box<dyn Error>> {
         self::rx(payload, &src, &dst, interface)
     }

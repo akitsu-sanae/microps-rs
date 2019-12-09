@@ -15,10 +15,11 @@ extern crate lazy_static;
 extern crate nix;
 
 pub mod arp;
+pub mod buffer;
 pub mod ethernet;
-pub mod frame;
 pub mod icmp;
 pub mod ip;
+pub mod packet;
 pub mod protocol;
 pub mod raw;
 pub mod slip;
