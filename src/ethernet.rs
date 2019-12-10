@@ -145,6 +145,11 @@ impl Device {
         Ok(())
     }
 
+    pub fn add_interface(&mut self, interface: ip::interface::Interface) {
+        let mut inner = self.0.lock().unwrap();
+        inner.interface = Some(interface);
+    }
+
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let device = self.clone();
         let name = device.0.lock().unwrap().name.clone();

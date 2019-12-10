@@ -4,11 +4,7 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::{
-    ethernet, frame,
-    ipv4::{Interface, InterfaceImpl},
-    raw,
-};
+use microps_rs::{ethernet, ip, raw};
 use nix::sys::signal::{self, SigHandler, Signal};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -44,21 +40,21 @@ const INTERFACES: [InterfaceData; 2] = [
 ];
 
 fn main() {
-    set_forwarding(true);
+    ip::set_is_forwarding(true);
     for interface in INTERFACES.iter() {
         let mut device = ethernet::Device::open(
             interface.name,
-            frame::MacAddr::from_str(&interface.mac_addr.to_string()).unwrap(),
+            ethernet::MacAddr::from_str(&interface.mac_addr.to_string()).unwrap(),
             raw::Type::Auto,
         )
         .unwrap();
-        let interface = Interface::new(InterfaceImpl {
-            device: device.clone(),
-            unicast: frame::Ipv4Addr::from_str(interface.ip_addr.to_string()).unwrap(),
-            netmask: frame::Ipv4Addr::from_str(interface.netmask.to_string()).unwrap(),
-            gateway: frame::Ipv4Addr::empty(),
-        });
-        device.add_interface(interface).unwrap();
+        let interface = ip::interface::Interface::new(
+            device.clone(),
+            ip::Addr::from_str(&interface.ip_addr.to_string()).unwrap(),
+            ip::Addr::from_str(&interface.netmask.to_string()).unwrap(),
+            ip::Addr::empty(),
+        );
+        device.add_interface(interface);
         device.run().unwrap();
         let name = {
             let device = device.0.lock().unwrap();

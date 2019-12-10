@@ -4,7 +4,7 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::raw::socket;
+use microps_rs::{buffer::Buffer, raw::socket};
 use nix::sys::signal::{self, SigHandler, Signal};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -26,16 +26,18 @@ fn main() {
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
     let device = socket::Device::open(args[1].as_str()).unwrap();
-    let mut device = device.lock().unwrap();
     eprintln!("[{}] {}", device.name(), device.addr().unwrap());
 
     while !TERMINATE.load(Ordering::SeqCst) {
-        device.rx(
-            Box::new(|frame: &Vec<u8>| {
-                println!("receive {} octets", frame.len());
-            }),
-            1000,
-        );
+        device
+            .rx(
+                Box::new(|data: Buffer| {
+                    println!("receive {} octets", data.0.len());
+                    Ok(None)
+                }),
+                1000,
+            )
+            .unwrap();
     }
     device.close().unwrap();
 }

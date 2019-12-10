@@ -4,7 +4,7 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::{raw::socket, util::hexdump};
+use microps_rs::{buffer::Buffer, raw::socket};
 use nix::sys::signal::{self, SigHandler, Signal};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -17,11 +17,6 @@ extern "C" fn handle_sigint(signal: libc::c_int) {
     TERMINATE.store(signal == Signal::SIGINT, Ordering::Relaxed);
 }
 
-fn dump(frame: &Vec<u8>, name: String) {
-    eprintln!("{}: receive {} octets", name, frame.len());
-    hexdump(frame);
-}
-
 fn main() {
     let args: Vec<String> = ::std::env::args().into_iter().collect();
     if args.len() != 2 {
@@ -31,12 +26,19 @@ fn main() {
     unsafe { signal::signal(Signal::SIGINT, handler) }.unwrap();
 
     let device = socket::Device::open(args[1].as_str()).unwrap();
-    let mut device = device.lock().unwrap();
     eprintln!("[{}] {}", device.name(), device.addr().unwrap());
 
     while !TERMINATE.load(Ordering::Relaxed) {
-        let name = device.name().clone();
-        device.rx(Box::new(|frame: &Vec<u8>| dump(frame, name)), 1000);
+        device
+            .rx(
+                Box::new(|data: Buffer| {
+                    eprintln!("receive {} octets", data.0.len());
+                    eprintln!("{}", data);
+                    Ok(None)
+                }),
+                1000,
+            )
+            .unwrap();
     }
     device.close().unwrap();
 }

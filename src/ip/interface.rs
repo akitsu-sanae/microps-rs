@@ -21,8 +21,18 @@ pub struct InterfaceImpl {
 pub struct Interface(pub Arc<Mutex<InterfaceImpl>>);
 
 impl Interface {
-    pub fn new(inner: InterfaceImpl) -> Interface {
-        Interface(Arc::new(Mutex::new(inner)))
+    pub fn new(
+        device: ethernet::Device,
+        unicast: ip::Addr,
+        netmask: ip::Addr,
+        gateway: ip::Addr,
+    ) -> Interface {
+        Interface(Arc::new(Mutex::new(InterfaceImpl {
+            device: device,
+            unicast: unicast,
+            netmask: netmask,
+            gateway: gateway,
+        })))
     }
     pub fn tx(
         &self,
