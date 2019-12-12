@@ -146,7 +146,9 @@ impl RawDevice for Device {
         callback(Buffer::from_vec(buf))
     }
 
-    fn tx(&self, _buf: Buffer) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+    fn tx(&self, buf: Buffer) -> Result<(), Box<dyn Error>> {
+        let buf = buf.to_vec();
+        unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) };
+        Ok(())
     }
 }

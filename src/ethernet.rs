@@ -175,10 +175,6 @@ impl Device {
         Ok(())
     }
 
-    pub fn stop(&self) {
-        unimplemented!()
-    }
-
     pub fn tx(
         &self,
         type_: Type,
