@@ -69,7 +69,7 @@ impl Interface {
         };
         let id = generate_id();
 
-        let mut segment_len: u16 = 0;
+        let mut segment_len: u16;
         let mut done: u16 = 0;
         while !packet.0.is_empty() {
             segment_len = ::std::cmp::min(

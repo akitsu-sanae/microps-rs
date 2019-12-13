@@ -282,6 +282,8 @@ pub fn rx(
 ) -> Result<(), Box<dyn Error>> {
     use packet::Packet;
     let frame = IcmpFrame::from_buffer(packet)?;
+    eprintln!(">>> icmp rx <<<");
+    frame.dump();
     if frame.type_ == Type::Echo {
         self::tx(
             interface,

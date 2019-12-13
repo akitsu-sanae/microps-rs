@@ -4,7 +4,7 @@ extern crate libc;
 extern crate microps_rs;
 extern crate nix;
 
-use microps_rs::{buffer, ethernet, ip, raw};
+use microps_rs::{ethernet, ip, raw};
 use nix::sys::signal::{self, SigHandler, Signal};
 use std::sync::atomic::{AtomicBool, Ordering};
 

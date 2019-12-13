@@ -196,6 +196,8 @@ impl Device {
     pub fn rx(&self, buffer: Buffer) -> Result<Option<thread::JoinHandle<()>>, Box<dyn Error>> {
         use packet::Packet;
         let frame = frame::Frame::from_buffer(buffer)?;
+        eprintln!(">>> ethernet_rx <<<");
+        frame.dump();
         let type_ = frame.type_;
         let payload = frame.payload;
         self.rx_handler(type_, payload)

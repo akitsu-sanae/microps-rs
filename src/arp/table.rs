@@ -53,7 +53,7 @@ pub fn remove(idx: usize) -> Result<(), Box<dyn Error>> {
         table.remove(idx);
         Ok(())
     } else {
-        Err(RuntimeError::new("".to_string())) // TODO
+        Err(RuntimeError::new(format!("out of range: index is {}, but table size is {}", idx, table.len())))
     }
 }
 

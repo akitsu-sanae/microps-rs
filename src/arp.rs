@@ -85,6 +85,9 @@ fn send_request(
         let interface_inner = interface.0.lock().unwrap();
         interface_inner.device.clone()
     };
+    eprintln!(">>> arp request <<<");
+    request.dump();
+
     device.tx(
         ethernet::Type::Arp,
         request.to_buffer(),
@@ -138,7 +141,7 @@ pub fn resolve(
                 if entry.mac_addr == ethernet::ADDR_ANY {
                     send_request(ip_interface, &ip_addr)?;
                     while {
-                        entry.cond.wait_timeout(
+                        let _table = entry.cond.wait_timeout(
                             table::TABLE.lock().unwrap(),
                             ::std::time::Duration::from_secs(1),
                         )?;
@@ -178,6 +181,8 @@ pub fn rx(
     device: &ethernet::Device,
 ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
     let message = frame::Frame::from_buffer(packet).unwrap();
+    eprintln!(">>> arp rx <<<");
+    message.dump();
     table::patrol();
     let marge = update_table(&message.src_ip_addr, &message.src_mac_addr).is_ok();
     let device = device.0.lock().unwrap();
