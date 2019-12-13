@@ -20,6 +20,7 @@ mod route;
 pub const VERSION: u8 = 4;
 
 pub const ADDR_LEN: usize = 4;
+const ADDR_ANY: Addr = Addr([0; ADDR_LEN]);
 const ADDR_BROADCAST: Addr = Addr([255; ADDR_LEN]);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

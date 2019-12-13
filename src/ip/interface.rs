@@ -27,12 +27,26 @@ impl Interface {
         netmask: ip::Addr,
         gateway: ip::Addr,
     ) -> Interface {
-        Interface(Arc::new(Mutex::new(InterfaceImpl {
+        let interface = Interface(Arc::new(Mutex::new(InterfaceImpl {
             device: device,
             unicast: unicast,
             netmask: netmask,
             gateway: gateway,
-        })))
+        })));
+        let network = unicast.apply_mask(&netmask);
+        route::add(route::Route {
+            network: network,
+            netmask: netmask,
+            nexthop: None,
+            interface: interface.clone(),
+        });
+        route::add(route::Route {
+            network: ip::ADDR_ANY,
+            netmask: ip::ADDR_ANY,
+            nexthop: Some(gateway),
+            interface: interface.clone(),
+        });
+        interface
     }
     pub fn tx(
         &self,
@@ -134,6 +148,28 @@ impl Interface {
         };
         let interface = self.0.lock().unwrap();
         interface.device.tx(ethernet::Type::Ip, data, mac_addr)
+    }
+
+    pub fn reconfigure(&mut self, addr: ip::Addr, netmask: ip::Addr, gateway: Option<ip::Addr>) -> Result<(), Box<dyn Error>> {
+        route::delete(self);
+        let mut interface = self.0.lock().unwrap();
+        interface.unicast = addr;
+        let network = interface.unicast.apply_mask(&interface.netmask);
+        route::add(route::Route {
+            network: network,
+            netmask: netmask,
+            nexthop: Some(ip::ADDR_ANY),
+            interface: self.clone(),
+        });
+        if let Some(gateway) = gateway {
+            route::add(route::Route {
+                network: ip::ADDR_ANY,
+                netmask: ip::ADDR_ANY,
+                nexthop: Some(gateway),
+                interface: self.clone(),
+            });
+        }
+        Ok(())
     }
 }
 
