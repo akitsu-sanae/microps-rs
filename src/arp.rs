@@ -85,8 +85,11 @@ fn send_request(
         let interface_inner = interface.0.lock().unwrap();
         interface_inner.device.clone()
     };
-    eprintln!(">>> arp request <<<");
-    request.dump();
+
+    if cfg!(debug_assertions) {
+        eprintln!(">>> arp request <<<");
+        request.dump();
+    }
 
     device.tx(
         ethernet::Type::Arp,
@@ -119,8 +122,10 @@ fn send_reply(
             dst_mac_addr: mac_addr,
             dst_ip_addr: ip_addr,
         };
-        eprintln!(">>> arp reply <<<");
-        reply.dump();
+        if cfg!(debug_assertions) {
+            eprintln!(">>> arp reply <<<");
+            reply.dump();
+        }
         device
             .tx(ethernet::Type::Arp, reply.to_buffer(), dst_addr)
             .unwrap();
@@ -181,8 +186,12 @@ pub fn rx(
     device: &ethernet::Device,
 ) -> Result<Option<JoinHandle<()>>, Box<dyn Error>> {
     let message = frame::Frame::from_buffer(packet).unwrap();
-    eprintln!(">>> arp rx <<<");
-    message.dump();
+
+    if cfg!(debug_assertions) {
+        eprintln!(">>> arp rx <<<");
+        message.dump();
+    }
+
     table::patrol();
     let marge = update_table(&message.src_ip_addr, &message.src_mac_addr).is_ok();
     let device = device.0.lock().unwrap();

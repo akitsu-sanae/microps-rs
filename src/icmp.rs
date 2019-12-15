@@ -231,6 +231,7 @@ struct IcmpFrame {
     pub payload: Buffer,
 }
 
+#[cfg(debug_assertions)]
 impl IcmpFrame {
     pub fn dump(&self) {
         eprintln!("type: {}", self.type_);
@@ -282,8 +283,12 @@ pub fn rx(
 ) -> Result<(), Box<dyn Error>> {
     use packet::Packet;
     let frame = IcmpFrame::from_buffer(packet)?;
-    eprintln!(">>> icmp rx <<<");
-    frame.dump();
+
+    if cfg!(debug_assertions) {
+        eprintln!(">>> icmp rx <<<");
+        frame.dump();
+    }
+
     if frame.type_ == Type::Echo {
         self::tx(
             interface,

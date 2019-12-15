@@ -22,6 +22,7 @@ pub struct Dgram {
     pub payload: buffer::Buffer,
 }
 
+#[cfg(debug_assertions)]
 impl Dgram {
     pub fn dump(&self) {
         eprintln!("version, header length: {}", self.version_header_length);

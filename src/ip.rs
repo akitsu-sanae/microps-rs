@@ -203,7 +203,10 @@ pub fn rx(
         }
         return Ok(None);
     }
-    dgram.dump();
+    if cfg!(debug_assertions) {
+        eprintln!(">>> ip tx <<<");
+        dgram.dump();
+    }
 
     let (src, dst, protocol_type) = (dgram.src, dgram.dst, dgram.protocol);
     let payload = if dgram.offset & 0x2000 != 0 || dgram.offset & 0x1ff != 0 {

@@ -4,7 +4,6 @@
 extern crate arrayvec;
 extern crate bitflags;
 extern crate chrono;
-extern crate hexdump;
 extern crate ifstructs;
 extern crate libc;
 

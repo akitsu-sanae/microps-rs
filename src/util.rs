@@ -35,10 +35,6 @@ pub fn ntohs(n: u16) -> u16 {
     u16::from_be(n)
 }
 
-pub fn hexdump(data: &Vec<u8>) {
-    hexdump::hexdump(data.as_slice());
-}
-
 pub fn calc_checksum(mut data: Buffer, init: u32) -> u16 {
     let mut sum = init;
     while data.0.len() >= 2 {
