@@ -14,7 +14,7 @@ pub struct InterfaceImpl {
     pub device: ethernet::Device,
     pub unicast: ip::Addr,
     pub netmask: ip::Addr,
-    pub gateway: ip::Addr,
+    pub gateway: Option<ip::Addr>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ impl Interface {
         device: ethernet::Device,
         unicast: ip::Addr,
         netmask: ip::Addr,
-        gateway: ip::Addr,
+        gateway: Option<ip::Addr>,
     ) -> Interface {
         let interface = Interface(Arc::new(Mutex::new(InterfaceImpl {
             device: device,
@@ -40,12 +40,14 @@ impl Interface {
             nexthop: None,
             interface: interface.clone(),
         });
-        route::add(route::Route {
-            network: ip::ADDR_ANY,
-            netmask: ip::ADDR_ANY,
-            nexthop: Some(gateway),
-            interface: interface.clone(),
-        });
+        if let Some(gateway) = gateway {
+            route::add(route::Route {
+                network: ip::ADDR_ANY,
+                netmask: ip::ADDR_ANY,
+                nexthop: Some(gateway),
+                interface: interface.clone(),
+            });
+        }
         interface
     }
     pub fn tx(
@@ -150,7 +152,12 @@ impl Interface {
         interface.device.tx(ethernet::Type::Ip, data, mac_addr)
     }
 
-    pub fn reconfigure(&mut self, addr: ip::Addr, netmask: ip::Addr, gateway: Option<ip::Addr>) -> Result<(), Box<dyn Error>> {
+    pub fn reconfigure(
+        &mut self,
+        addr: ip::Addr,
+        netmask: ip::Addr,
+        gateway: Option<ip::Addr>,
+    ) -> Result<(), Box<dyn Error>> {
         route::delete(self);
         let mut interface = self.0.lock().unwrap();
         interface.unicast = addr;

@@ -43,7 +43,7 @@ fn main() {
         device.clone(),
         ip::Addr::from_str(&ip_addr).unwrap(),
         ip::Addr::empty(),
-        ip::Addr::empty(),
+        None,
     );
     device.add_interface(interface);
     device.run().unwrap();

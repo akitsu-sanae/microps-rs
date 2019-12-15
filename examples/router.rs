@@ -52,7 +52,7 @@ fn main() {
             device.clone(),
             ip::Addr::from_str(&interface.ip_addr.to_string()).unwrap(),
             ip::Addr::from_str(&interface.netmask.to_string()).unwrap(),
-            ip::Addr::empty(),
+            None,
         );
         device.add_interface(interface);
         device.run().unwrap();

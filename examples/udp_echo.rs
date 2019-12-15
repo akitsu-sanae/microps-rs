@@ -1,10 +1,13 @@
 extern crate microps_rs;
 
+use microps_rs::{ethernet::{self, Device, MacAddr}, ip::{self, interface::Interface}, raw::Type, udp};
 use std::collections::VecDeque;
-use microps_rs::{udp, ethernet::MacAddr, ip};
 
 fn print_usage(name: &str) {
-    eprintln!("usage: {} <interface> [mac_addr] static <ip_addr> <netmask> [gateway]", name);
+    eprintln!(
+        "usage: {} <interface> [mac_addr] static <ip_addr> <netmask> [gateway]",
+        name
+    );
     eprintln!("   or: {} <interface> [mac_addr] dhcp", name);
 }
 
@@ -50,19 +53,16 @@ fn parse_args() -> Args {
                     netmask: netmask,
                     gateway: gateway,
                 })
-            },
-            "dhcp" => {
-                Some(Args::Dhcp {
-                    interface: interface,
-                    mac_addr: mac_addr,
-                })
-            },
+            }
+            "dhcp" => Some(Args::Dhcp {
+                interface: interface,
+                mac_addr: mac_addr,
+            }),
             _ => {
                 print_usage(&program_name);
                 panic!()
             }
         }
-
     })() {
         Some(args) => args,
         None => {
@@ -73,6 +73,39 @@ fn parse_args() -> Args {
 }
 
 fn main() {
+    match parse_args() {
+        Args::Static {
+            interface,
+            mac_addr,
+            ip_addr,
+            netmask,
+            gateway,
+        } => {
+            let mut device = Device::open(interface.as_str(), match mac_addr {
+                None => ethernet::ADDR_ANY,
+                Some(mac_addr) => mac_addr,
+            }, Type::Auto).unwrap();
+            let interface = Interface::new(device.clone(), ip_addr, netmask, gateway);
+            device.add_interface(interface);
+            device.run().unwrap();
+        },
+        Args::Dhcp {
+            interface,
+            mac_addr,
+        } => {
+            let mut device = Device::open(interface.as_str(), match mac_addr {
+                None => ethernet::ADDR_ANY,
+                Some(mac_addr) => mac_addr,
+            }, Type::Auto).unwrap();
+            let ip_addr = ip::Addr::from_str(&"0.0.0.0".to_string()).unwrap();
+            let netmask = ip::Addr::from_str(&"0.0.0.0".to_string()).unwrap();
+            let interface = Interface::new(device.clone(), ip_addr, netmask, None);
+            device.add_interface(interface);
+            device.run().unwrap();
+            // dhcp::init(); TODO
+        }
+    }
+
     let mut socket = udp::open().unwrap();
     socket.bind(None, 7).unwrap();
     eprintln!("waiting for message...");
@@ -87,4 +120,3 @@ fn main() {
     }
     socket.close().unwrap();
 }
-
