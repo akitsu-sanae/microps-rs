@@ -6,6 +6,7 @@ extern crate bitflags;
 extern crate chrono;
 extern crate ifstructs;
 extern crate libc;
+extern crate uuid;
 
 #[macro_use]
 extern crate lazy_static;

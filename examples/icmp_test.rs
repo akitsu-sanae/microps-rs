@@ -50,8 +50,7 @@ fn main() {
     )
     .unwrap();
     eprintln!("ip_addr: {}", ip_addr);
-    let interface =
-        ip::interface::Interface::new(device.clone(), ip_addr, netmask, None);
+    let interface = ip::interface::Interface::new(device.clone(), ip_addr, netmask, None);
     device.add_interface(interface);
     device.run().unwrap();
     eprintln!("[{}]", ifname);

@@ -1,6 +1,11 @@
 extern crate microps_rs;
 
-use microps_rs::{ethernet::{self, Device, MacAddr}, ip::{self, interface::Interface}, raw::Type, udp};
+use microps_rs::{
+    ethernet::{self, Device, MacAddr},
+    ip::{self, interface::Interface},
+    raw::Type,
+    udp,
+};
 use std::collections::VecDeque;
 
 fn print_usage(name: &str) {
@@ -81,22 +86,32 @@ fn main() {
             netmask,
             gateway,
         } => {
-            let mut device = Device::open(interface.as_str(), match mac_addr {
-                None => ethernet::ADDR_ANY,
-                Some(mac_addr) => mac_addr,
-            }, Type::Auto).unwrap();
+            let mut device = Device::open(
+                interface.as_str(),
+                match mac_addr {
+                    None => ethernet::ADDR_ANY,
+                    Some(mac_addr) => mac_addr,
+                },
+                Type::Auto,
+            )
+            .unwrap();
             let interface = Interface::new(device.clone(), ip_addr, netmask, gateway);
             device.add_interface(interface);
             device.run().unwrap();
-        },
+        }
         Args::Dhcp {
             interface,
             mac_addr,
         } => {
-            let mut device = Device::open(interface.as_str(), match mac_addr {
-                None => ethernet::ADDR_ANY,
-                Some(mac_addr) => mac_addr,
-            }, Type::Auto).unwrap();
+            let mut device = Device::open(
+                interface.as_str(),
+                match mac_addr {
+                    None => ethernet::ADDR_ANY,
+                    Some(mac_addr) => mac_addr,
+                },
+                Type::Auto,
+            )
+            .unwrap();
             let ip_addr = ip::Addr::from_str(&"0.0.0.0".to_string()).unwrap();
             let netmask = ip::Addr::from_str(&"0.0.0.0".to_string()).unwrap();
             let interface = Interface::new(device.clone(), ip_addr, netmask, None);

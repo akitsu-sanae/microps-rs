@@ -15,4 +15,5 @@ ifstructs = "0.1"
 hexdump = "*"
 lazy_static = "*"
 chrono = "0.4"
+uuid = { version="0.8", features=["v4"]}
 

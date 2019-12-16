@@ -190,3 +190,7 @@ fn generate_id() -> u16 {
 lazy_static! {
     static ref ID_COUNTER: Mutex<u16> = Mutex::new(128);
 }
+
+pub fn by_addr(_addr: ip::Addr) -> Option<Interface> {
+    unimplemented!()
+}
