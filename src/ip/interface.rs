@@ -191,6 +191,19 @@ lazy_static! {
     static ref ID_COUNTER: Mutex<u16> = Mutex::new(128);
 }
 
-pub fn by_addr(_addr: ip::Addr) -> Option<Interface> {
-    unimplemented!()
+pub fn by_addr(addr: ip::Addr) -> Option<Interface> {
+    let devices = ethernet::DEVICES.lock().unwrap();
+    for device in devices.iter() {
+        let device = device.0.lock().unwrap();
+        if let Some(interface) = &device.interface {
+            let unicast = {
+                let interface = interface.0.lock().unwrap();
+                interface.unicast
+            };
+            if unicast == addr {
+                return Some(interface.clone())
+            }
+        }
+    }
+    None
 }
