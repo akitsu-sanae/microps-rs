@@ -98,7 +98,6 @@ impl fmt::Display for Type {
 lazy_static! {
     static ref JOIN_HANDLES: Mutex<HashMap<String, thread::JoinHandle<()>>> =
         Mutex::new(HashMap::new());
-
     pub static ref DEVICES: Arc<Mutex<Vec<Device>>> = Arc::new(Mutex::new(vec![]));
 }
 
@@ -228,4 +227,3 @@ impl Drop for Device {
         // TODO: remove the same device from `DEVICES`
     }
 }
-

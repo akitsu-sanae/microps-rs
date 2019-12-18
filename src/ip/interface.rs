@@ -201,7 +201,7 @@ pub fn by_addr(addr: ip::Addr) -> Option<Interface> {
                 interface.unicast
             };
             if unicast == addr {
-                return Some(interface.clone())
+                return Some(interface.clone());
             }
         }
     }

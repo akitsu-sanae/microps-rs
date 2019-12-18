@@ -26,4 +26,3 @@ pub mod slip;
 pub mod tcp;
 pub mod udp;
 pub mod util;
-pub mod queue;
