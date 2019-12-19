@@ -12,6 +12,9 @@ use uuid::Uuid;
 mod packet;
 mod queue;
 
+const SOURCE_PORT_MIN: u16 = 49152;
+const SOURCE_PORT_MAX: u16 = 65535;
+
 struct Cb {
     interface: Option<Interface>,
     port: u16,
@@ -52,23 +55,31 @@ impl Socket {
         &mut self,
         timeout: i32,
     ) -> Result<(ip::Addr, u16, buffer::Buffer), Box<dyn Error>> {
-        let mut cb_table = CB_TABLE.lock().unwrap();
-        let cb = cb_table.get_mut(&self.id).unwrap(); // TODO
-        while cb.queue.data.is_empty() && errno() == Errno::ETIMEDOUT as i32 {
+        let cb_table = CB_TABLE.lock().unwrap();
+        let ref cb = cb_table.get(&self.id).unwrap();
+        eprintln!("hoge");
+        loop {
+            eprintln!("fuga");
             if timeout != -1 {
-                let _table = cb.cond.wait_timeout(
-                    CB_TABLE.lock().unwrap(),
+                cb.cond.wait_timeout(
+                   CB_TABLE.lock().unwrap(), 
                     ::std::time::Duration::from_secs(timeout as u64),
-                )?;
+                    )?;
             } else {
-                let _table = cb.cond.wait(CB_TABLE.lock().unwrap())?;
+                cb.cond.wait(CB_TABLE.lock().unwrap())?;
+            };
+
+            eprintln!("piyo");
+            if errno() == Errno::ETIMEDOUT as i32 {
+                return Err(util::RuntimeError::new(format!("timeout")));
+            }
+
+            let mut cb_table = CB_TABLE.lock().unwrap();
+            let ref mut cb = cb_table.get_mut(&self.id).unwrap();
+            if let Some(entry) = cb.queue.pop() {
+                return Ok((entry.addr, entry.port, entry.data))
             }
         }
-        if errno() == Errno::ETIMEDOUT as i32 {
-            return Err(util::RuntimeError::new(format!("timeout")));
-        }
-        let entry = cb.queue.pop().unwrap();
-        Ok((entry.addr, entry.port, entry.data))
     }
 
     pub fn send_to(
@@ -78,13 +89,37 @@ impl Socket {
         peer_port: u16,
     ) -> Result<(), Box<dyn Error>> {
         let mut cb_table = CB_TABLE.lock().unwrap();
-        let ref mut cb = cb_table.get_mut(&self.id).unwrap();
+        let ref cb = cb_table.get_mut(&self.id).unwrap();
         let interface = cb
             .interface
             .clone()
             .or_else(|| ip::interface::by_addr(peer_addr))
             .unwrap();
-        // TODO: do something when `cb.port` is `None`
+
+        let port = if cb.port == 0 {
+            let mut result = None;
+            for port in {SOURCE_PORT_MIN..SOURCE_PORT_MAX} {
+                let is_found = cb_table.iter().any(|(_, ref cb)| {
+                    cb.port == port && cb.interface.as_ref().map(|interface_| {
+                        Arc::ptr_eq(&interface.0, &interface_.0)
+                    }).unwrap_or(true)
+                });
+                if is_found {
+                    result = Some(port);
+                    break;
+                }
+            }
+            result
+        } else {
+            Some(cb.port)
+        };
+
+        let ref mut cb = cb_table.get_mut(&self.id).unwrap();
+        if let Some(port) = port {
+            cb.port = port;
+        }else {
+            return Err(util::RuntimeError::new(format!("not found : valid port")));
+        }
         tx(&interface, cb.port, buf, peer_addr, peer_port)
     }
 
