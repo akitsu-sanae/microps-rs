@@ -193,6 +193,10 @@ impl Device {
             type_: type_,
             payload: payload,
         };
+        if cfg!(debug_assertions) {
+            eprintln!(">>> ethernet tx <<<");
+            frame.dump();
+        }
         use packet::Packet;
         device_inner.raw.tx(frame.to_buffer())
     }
@@ -202,7 +206,7 @@ impl Device {
         let frame = frame::Frame::from_buffer(buffer)?;
 
         if cfg!(debug_assertions) {
-            eprintln!(">>> ethernet_rx <<<");
+            eprintln!(">>> ethernet rx <<<");
             frame.dump();
         }
         let type_ = frame.type_;

@@ -204,7 +204,7 @@ pub fn rx(
         return Ok(None);
     }
     if cfg!(debug_assertions) {
-        eprintln!(">>> ip tx <<<");
+        eprintln!(">>> ip rx <<<");
         dgram.dump();
     }
 

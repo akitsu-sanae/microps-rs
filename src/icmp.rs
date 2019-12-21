@@ -317,6 +317,12 @@ pub fn tx(
         sum: util::calc_checksum(payload.clone(), 0),
         payload: payload,
     };
+
+    if cfg!(debug_assertions) {
+        eprintln!(">>> icmp tx <<<");
+        frame.dump();
+    }
+
     use packet::Packet;
     let buf = frame.to_buffer();
     interface.tx(protocol::ProtocolType::Icmp, buf, dst)
