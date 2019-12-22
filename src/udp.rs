@@ -201,13 +201,25 @@ pub fn rx(
 }
 
 pub fn tx(
-    _interface: &Interface,
-    _src_port: u16,
-    _buf: buffer::Buffer,
-    _peer_addr: ip::Addr,
-    _peer_port: u16,
+    interface: &Interface,
+    src_port: u16,
+    buf: buffer::Buffer,
+    peer_addr: ip::Addr,
+    peer_port: u16,
 ) -> Result<(), Box<dyn Error>> {
-    unimplemented!()
+    let packet = packet::Packet {
+        src_port: src_port,
+        dst_port: peer_port,
+        sum: 0,
+        payload: buf,
+    };
+    // TODO: set checksum
+    if cfg!(debug_assertions) {
+        eprintln!(">> udp tx <<");
+        packet.dump();
+    }
+    use crate::packet::Packet;
+    interface.tx(protocol::ProtocolType::Udp, packet.to_buffer(), &peer_addr)
 }
 
 pub struct UdpProtocol {}

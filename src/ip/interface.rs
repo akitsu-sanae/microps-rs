@@ -60,7 +60,10 @@ impl Interface {
             (None, self.clone(), None)
         } else {
             match route::lookup(None, dst.clone()) {
-                None => return Err(util::RuntimeError::new("ip no route to host".to_string())),
+                None => {
+                    eprintln!("ip no route to host"); // TODO
+                    return Ok(())
+                },
                 Some(route) => {
                     let nexthop = Some(route.nexthop.unwrap_or(dst.clone()));
                     let interface = route.interface;
