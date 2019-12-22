@@ -8,7 +8,6 @@ pub struct Frame {
     pub payload: Buffer,
 }
 
-#[cfg(debug_assertions)]
 impl Frame {
     pub fn dump(&self) {
         eprintln!("dst : {}", self.dst_addr);

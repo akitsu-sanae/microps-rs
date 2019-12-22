@@ -1,12 +1,12 @@
 use crate::{
     buffer,
     ip::{self, interface::Interface},
-    util,
+    protocol, util,
 };
 use nix::errno::{errno, Errno};
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use uuid::Uuid;
 
 mod packet;
@@ -19,11 +19,12 @@ struct Cb {
     interface: Option<Interface>,
     port: u16,
     queue: queue::Queue,
-    cond: Condvar,
 }
 
 lazy_static! {
     static ref CB_TABLE: Arc<Mutex<HashMap<Uuid, Cb>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref CONDS_PUSHED: Arc<RwLock<HashMap<Uuid, Condvar>>> =
+        Arc::new(RwLock::new(HashMap::new()));
 }
 
 pub struct Socket {
@@ -33,20 +34,27 @@ pub struct Socket {
 impl Socket {
     pub fn bind(
         &mut self,
-        peer_addr: Option<ip::Addr>,
+        peer_addr: ip::Addr,
         peer_port: u16,
     ) -> Result<(), Box<dyn Error>> {
         let mut cb_table = CB_TABLE.lock().unwrap();
         let ref mut cb = cb_table.get_mut(&self.id).unwrap();
-        let interface = if let Some(addr) = peer_addr {
-            match ip::interface::by_addr(addr) {
-                Some(interface) => Some(interface),
-                None => return Err(util::RuntimeError::new(format!("invalid addr: {}", addr))),
-            }
-        } else {
-            None
+        let interface = match ip::interface::by_addr(peer_addr) {
+                Some(interface) => interface,
+                None => return Err(util::RuntimeError::new(format!("invalid addr: {}", peer_addr))),
         };
-        cb.interface = interface;
+        cb.interface = Some(interface);
+        cb.port = peer_port;
+        Ok(())
+    }
+    pub fn bind_interface(
+        &mut self,
+        interface: Interface,
+        peer_port: u16,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut cb_table = CB_TABLE.lock().unwrap();
+        let ref mut cb = cb_table.get_mut(&self.id).unwrap();
+        cb.interface = Some(interface);
         cb.port = peer_port;
         Ok(())
     }
@@ -55,21 +63,20 @@ impl Socket {
         &mut self,
         timeout: i32,
     ) -> Result<(ip::Addr, u16, buffer::Buffer), Box<dyn Error>> {
-        let cb_table = CB_TABLE.lock().unwrap();
-        let ref cb = cb_table.get(&self.id).unwrap();
-        eprintln!("hoge");
         loop {
-            eprintln!("fuga");
             if timeout != -1 {
-                cb.cond.wait_timeout(
-                   CB_TABLE.lock().unwrap(), 
-                    ::std::time::Duration::from_secs(timeout as u64),
-                    )?;
+                let conds_pushed = CONDS_PUSHED.read().unwrap();
+                let ref cond_pushed = conds_pushed.get(&self.id).unwrap();
+                let cb_table = CB_TABLE.lock().unwrap();
+                cond_pushed
+                    .wait_timeout(cb_table, ::std::time::Duration::from_secs(timeout as u64))?;
             } else {
-                cb.cond.wait(CB_TABLE.lock().unwrap())?;
+                let conds_pushed = CONDS_PUSHED.read().unwrap();
+                let ref cond_pushed = conds_pushed.get(&self.id).unwrap();
+                let cb_table = CB_TABLE.lock().unwrap();
+                cond_pushed.wait(cb_table);
             };
 
-            eprintln!("piyo");
             if errno() == Errno::ETIMEDOUT as i32 {
                 return Err(util::RuntimeError::new(format!("timeout")));
             }
@@ -77,7 +84,7 @@ impl Socket {
             let mut cb_table = CB_TABLE.lock().unwrap();
             let ref mut cb = cb_table.get_mut(&self.id).unwrap();
             if let Some(entry) = cb.queue.pop() {
-                return Ok((entry.addr, entry.port, entry.data))
+                return Ok((entry.addr, entry.port, entry.data));
             }
         }
     }
@@ -98,11 +105,14 @@ impl Socket {
 
         let port = if cb.port == 0 {
             let mut result = None;
-            for port in {SOURCE_PORT_MIN..SOURCE_PORT_MAX} {
+            for port in { SOURCE_PORT_MIN..SOURCE_PORT_MAX } {
                 let is_found = cb_table.iter().any(|(_, ref cb)| {
-                    cb.port == port && cb.interface.as_ref().map(|interface_| {
-                        Arc::ptr_eq(&interface.0, &interface_.0)
-                    }).unwrap_or(true)
+                    cb.port == port
+                        && cb
+                            .interface
+                            .as_ref()
+                            .map(|interface_| Arc::ptr_eq(&interface.0, &interface_.0))
+                            .unwrap_or(true)
                 });
                 if is_found {
                     result = Some(port);
@@ -117,7 +127,7 @@ impl Socket {
         let ref mut cb = cb_table.get_mut(&self.id).unwrap();
         if let Some(port) = port {
             cb.port = port;
-        }else {
+        } else {
             return Err(util::RuntimeError::new(format!("not found : valid port")));
         }
         tx(&interface, cb.port, buf, peer_addr, peer_port)
@@ -136,10 +146,13 @@ pub fn open() -> Result<Socket, Box<dyn Error>> {
     let cb = Cb {
         interface: None,
         port: 0,
-        cond: Condvar::new(),
         queue: queue::Queue::new(),
     };
     cb_table.insert(uuid, cb);
+
+    let mut conds_pushed = CONDS_PUSHED.write().unwrap();
+    conds_pushed.insert(uuid, Condvar::new());
+
     Ok(Socket { id: uuid })
 }
 
@@ -150,9 +163,9 @@ pub fn rx(
     interface: &Interface,
 ) -> Result<(), Box<dyn Error>> {
     let pseudo = 0; // TODO
-    if util::calc_checksum(buffer::Buffer::empty(), pseudo) != 0 || true {
+    if util::calc_checksum(buffer::Buffer::empty(), pseudo) != 0 && false {
         // TODO
-        return Err(util::RuntimeError::new(format!("incorrent checksum")));
+        return Err(util::RuntimeError::new(format!("incorrect checksum")));
     }
 
     use crate::packet::Packet;
@@ -164,20 +177,23 @@ pub fn rx(
     }
 
     let mut cb_table = CB_TABLE.lock().unwrap();
-    for (_, ref mut cb) in cb_table.iter_mut() {
-        if if let Some(ref interface_) = cb.interface {
-            Arc::ptr_eq(&interface.0, &interface_.0)
-        } else {
-            true
-        } && cb.port == packet.dst_port
-        {
+    for (ref id, ref mut cb) in cb_table.iter_mut() {
+        let is_same_interface = cb
+            .interface
+            .as_ref()
+            .map(|interface_| Arc::ptr_eq(&interface.0, &interface_.0))
+            .unwrap_or(true);
+        if is_same_interface && cb.port == packet.dst_port {
             let queue_header = queue::Entry {
                 addr: *src,
                 port: packet.src_port,
                 data: packet.payload,
             };
             cb.queue.push(queue_header);
-            cb.cond.notify_all();
+
+            let conds_pushed = CONDS_PUSHED.read().unwrap();
+            let cond = conds_pushed.get(id).unwrap();
+            cond.notify_all();
             break;
         }
     }
@@ -192,4 +208,27 @@ pub fn tx(
     _peer_port: u16,
 ) -> Result<(), Box<dyn Error>> {
     unimplemented!()
+}
+
+pub struct UdpProtocol {}
+
+impl UdpProtocol {
+    pub fn new() -> Arc<dyn protocol::Protocol + Send + Sync> {
+        Arc::new(UdpProtocol {})
+    }
+}
+
+impl protocol::Protocol for UdpProtocol {
+    fn type_(&self) -> protocol::ProtocolType {
+        protocol::ProtocolType::Udp
+    }
+    fn handler(
+        &self,
+        payload: buffer::Buffer,
+        src: ip::Addr,
+        dst: ip::Addr,
+        interface: &Interface,
+    ) -> Result<(), Box<dyn Error>> {
+        self::rx(payload, &src, &dst, interface)
+    }
 }

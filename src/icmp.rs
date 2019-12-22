@@ -231,7 +231,6 @@ struct IcmpFrame {
     pub payload: Buffer,
 }
 
-#[cfg(debug_assertions)]
 impl IcmpFrame {
     pub fn dump(&self) {
         eprintln!("type: {}", self.type_);

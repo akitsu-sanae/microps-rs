@@ -1,4 +1,4 @@
-use crate::{buffer, icmp, ip};
+use crate::{buffer, icmp, ip, udp};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
@@ -56,5 +56,5 @@ pub trait Protocol {
 
 lazy_static! {
     pub static ref PROTOCOLS: Mutex<Vec<Arc<dyn Protocol + Send + Sync>>> =
-        Mutex::new(vec![icmp::IcmpProtocol::new()]);
+        Mutex::new(vec![icmp::IcmpProtocol::new(), udp::UdpProtocol::new(),]);
 }

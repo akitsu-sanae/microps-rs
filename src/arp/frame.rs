@@ -11,7 +11,6 @@ pub struct Frame {
 
 const FRAME_SIZE: usize = 52;
 
-#[cfg(debug_assertions)]
 impl Frame {
     pub fn dump(&self) {
         eprintln!("op: {}", self.op);

@@ -78,7 +78,7 @@ fn parse_args() -> Args {
 }
 
 fn main() {
-    match parse_args() {
+    let interface = match parse_args() {
         Args::Static {
             interface,
             mac_addr,
@@ -96,8 +96,9 @@ fn main() {
             )
             .unwrap();
             let interface = Interface::new(device.clone(), ip_addr, netmask, gateway);
-            device.add_interface(interface);
+            device.add_interface(interface.clone());
             device.run().unwrap();
+            interface
         }
         Args::Dhcp {
             interface,
@@ -115,14 +116,15 @@ fn main() {
             let ip_addr = ip::Addr::from_str(&"0.0.0.0".to_string()).unwrap();
             let netmask = ip::Addr::from_str(&"0.0.0.0".to_string()).unwrap();
             let interface = Interface::new(device.clone(), ip_addr, netmask, None);
-            device.add_interface(interface);
+            device.add_interface(interface.clone());
             device.run().unwrap();
+            interface
             // dhcp::init(); TODO
         }
-    }
+    };
 
     let mut socket = udp::open().unwrap();
-    socket.bind(None, 7).unwrap();
+    socket.bind_interface(interface, 7).unwrap();
     eprintln!("waiting for message...");
     loop {
         let (peer_addr, peer_port, buf) = socket.recv_from(-1).unwrap();

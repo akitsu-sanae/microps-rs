@@ -9,7 +9,6 @@ pub struct Packet {
     pub payload: Buffer,
 }
 
-#[cfg(debug_assertions)]
 impl Packet {
     pub fn dump(&self) {
         eprintln!("src port: {}", self.src_port);
