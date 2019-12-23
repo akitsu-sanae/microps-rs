@@ -10,7 +10,7 @@ pub struct Fragment {
     pub id: u16,
     pub protocol: ip::ProtocolType,
     pub data: Buffer,
-    pub mask: Buffer,
+    pub mask: Vec<u32>,
     pub timestamp: Option<DateTime<Utc>>,
 }
 
@@ -20,13 +20,15 @@ lazy_static! {
 
 impl Fragment {
     fn new(dgram: &ip::dgram::Dgram) -> Self {
+        let mut mask = vec![];
+        mask.resize(2048, 0);
         Fragment {
             src: dgram.src.clone(),
             dst: dgram.dst.clone(),
             id: dgram.id.clone(),
             protocol: dgram.protocol,
             data: Buffer::new(65535),
-            mask: Buffer::new(2048),
+            mask: mask,
             timestamp: None,
         }
     }
@@ -89,7 +91,7 @@ pub fn process(dgram: ip::dgram::Dgram) -> Result<Fragment, Box<dyn Error>> {
     let off = ((dgram.offset & 0x1fff) << 3) as usize;
     let payload_len = dgram.payload.0.len();
     fragment.data.write(off, dgram.payload);
-    // TODO: set mask data
+    set_mask(&mut fragment.mask, off, payload_len);
 
     fragment.timestamp = Some(Utc::now());
     if dgram.offset & 0x2000 != 0 {
@@ -99,7 +101,7 @@ pub fn process(dgram: ip::dgram::Dgram) -> Result<Fragment, Box<dyn Error>> {
     }
     fragment.data.0.resize(off + payload_len, 0);
 
-    if !check_mask(&fragment.mask, fragment.data.0.len()) {
+    if !check_mask(&fragment.mask, 0, fragment.data.0.len()) {
         return Err(util::RuntimeError::new(format!("imcomplete flagments")));
     }
     let mut count = FRAGMENT_COUNT.lock().unwrap();
@@ -107,6 +109,51 @@ pub fn process(dgram: ip::dgram::Dgram) -> Result<Fragment, Box<dyn Error>> {
     Ok(fragment)
 }
 
-fn check_mask(_mask: &Buffer, _data_len: usize) -> bool {
-    true // TODO: check!!
+fn set_mask(mask: &mut Vec<u32>, offset: usize, mut len: usize) {
+    let so = offset / 32;
+    let sb = offset % 32;
+    let bl = if len > 32 - sb {
+        32 - sb
+    } else {
+        len
+    };
+    mask[so] |= (0xffffffff >> (32 - bl)) << sb;
+    len -= bl;
+    for idx in so .. so+len/32 {
+        mask[idx + 1] = 0xffffffff;
+    }
+    let i = so+len/32;
+    len -= 32 * (len/32);
+    if len != 0 {
+        mask[i+1] |= 0xffffffff >> (32 - len);
+    }
 }
+
+fn check_mask(mask: &Vec<u32>, offset: usize, mut data_len: usize) -> bool {
+    let so = offset / 32;
+    let sb = offset % 32;
+    let bl = if data_len > 32 - sb {
+        32 - sb
+    } else {
+        data_len
+    };
+    if (mask[offset / 32] & ((0xffffffff >> (32 - bl)) << sb)) ^ ((0xffffffff >> (32 - bl)) << sb) != 0 {
+        return false;
+    }
+    data_len -= bl;
+    for idx in so .. so+data_len/32 {
+        if mask[idx + 1] ^ 0xffffffff != 0 {
+            return false;
+        }
+    }
+    let i = so+data_len/32;
+    data_len -= 32 * (data_len/32);
+    if data_len != 0 {
+        if (mask[i + 1] & (0xffffffff >> (32 - data_len))) ^ (0xffffffff >> (32 - data_len)) != 0 {
+            return false;
+        }
+    }
+    true
+}
+
+
