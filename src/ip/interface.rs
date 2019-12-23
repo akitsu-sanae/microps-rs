@@ -87,7 +87,7 @@ impl Interface {
                 0x0000
             };
             let offset = flag | (done >> 3) & 0x1fff;
-            let segment = packet.head(segment_len as usize);
+            let segment = packet.pop_buffer(segment_len as usize, "segment")?;
             interface.tx_core(protocol, segment, src, dst.clone(), nexthop, id, offset)?;
             done += segment_len as u16;
         }
@@ -140,7 +140,6 @@ impl Interface {
         let mac_addr = if DeviceFlags::BROADCAST & DeviceFlags::NOARP == DeviceFlags::EMPTY {
             match dst {
                 Some(dst) => match arp::resolve(&self, *dst, data.clone())? {
-                    // TODO: remove if possible
                     Some(addr) => addr,
                     None => return Ok(()),
                 },

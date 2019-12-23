@@ -52,13 +52,6 @@ impl Buffer {
     pub fn new(max_len: usize) -> Self {
         Buffer(VecDeque::with_capacity(max_len))
     }
-    pub fn head(&mut self, len: usize) -> Self {
-        let head = self.0.split_off(len);
-        let mut head_ = head.clone();
-        head_.append(&mut self.0);
-        ::std::mem::replace(&mut self.0, head_);
-        Buffer(head)
-    }
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -164,11 +157,11 @@ impl Buffer {
         }
     }
 
-    pub fn pop_buffer(&mut self, len: usize, label: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn pop_buffer(&mut self, len: usize, label: &str) -> Result<Buffer, Box<dyn Error>> {
         if len <= self.0.len() {
             let buf = self.0.split_off(len);
             let buf = ::std::mem::replace(&mut self.0, buf);
-            Ok(buf.into_iter().collect())
+            Ok(Buffer(buf))
         } else {
             Err(util::RuntimeError::new(format!(
                 "cannot pop {} from {:?}",

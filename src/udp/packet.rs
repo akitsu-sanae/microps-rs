@@ -17,6 +17,10 @@ impl Packet {
         eprintln!("sum: {}", self.sum);
         eprintln!("{}", self.payload);
     }
+
+    pub fn write_checksum(buf: &mut Buffer, sum: u16) {
+        buf.write_u16(4, sum);
+    }
 }
 
 impl packet::Packet<Packet> for Packet {

@@ -172,7 +172,9 @@ impl Device {
                     tx_join_handle.join().unwrap();
                 }
                 Ok(None) => {}
-                Err(_err) => {} // TODO: use err
+                Err(err) => {
+                    eprintln!("err : {}", err);
+                }
             }
         });
         JOIN_HANDLES.lock().unwrap().insert(name, join_handle);

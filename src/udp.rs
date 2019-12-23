@@ -170,8 +170,8 @@ pub fn rx(
     pseudo += src_u32 & 0xffff;
     pseudo += dst_u32 >> 16;
     pseudo += dst_u32 & 0xffff;
-    pseudo += protocol::ProtocolType::Udp as u32; // TODO: chagne to network order
-    pseudo += buf.0.len() as u32; // TODO: change to network order
+    pseudo += (protocol::ProtocolType::Udp as u32).to_be();
+    pseudo += (buf.0.len() as u32).to_be();
 
     let buf_vec = buf.to_vec();
     if util::calc_checksum(buf_vec.as_slice(), buf_vec.len(), pseudo) != 0 && false {
@@ -223,13 +223,31 @@ pub fn tx(
         sum: 0,
         payload: buf,
     };
-    // TODO: set checksum
     if cfg!(debug_assertions) {
         eprintln!(">> udp tx <<");
         packet.dump();
     }
     use crate::packet::Packet;
-    interface.tx(protocol::ProtocolType::Udp, packet.to_buffer(), &peer_addr)
+    let packet = packet.to_buffer();
+
+    let mut pseudo: u32 = 0;
+    let self_u32 = {
+        let interface = interface.0.lock().unwrap();
+        interface.unicast.as_u32()
+    };
+    let peer_u32 = peer_addr.as_u32();
+    pseudo += (self_u32 >> 16) & 0xffff;
+    pseudo += self_u32 & 0xffff;
+    pseudo += (peer_u32 >> 16) & 0xffff;
+    pseudo += peer_u32 & 0xffff;
+    pseudo += (protocol::ProtocolType::Udp as u32).to_be();
+    pseudo += (packet.0.len() as u32).to_be();
+    let packet_vec = packet.to_vec();
+    let sum = util::calc_checksum(packet_vec.as_slice(), packet_vec.len(), pseudo);
+    let mut packet = buffer::Buffer::from_vec(packet_vec);
+    packet::Packet::write_checksum(&mut packet, sum);
+
+    interface.tx(protocol::ProtocolType::Udp, packet, &peer_addr)
 }
 
 pub struct UdpProtocol {}
