@@ -238,6 +238,10 @@ impl IcmpFrame {
         eprintln!("sum: {}", self.sum);
         eprintln!("{}", self.payload);
     }
+
+    fn write_checksum(buf: &mut Buffer, sum: u16) {
+        buf.write_u16(2, sum);
+    }
 }
 
 impl packet::Packet<IcmpFrame> for IcmpFrame {
@@ -313,7 +317,7 @@ pub fn tx(
         type_: type_,
         code: code,
         values: values,
-        sum: util::calc_checksum(payload.clone(), 0),
+        sum: 0,
         payload: payload,
     };
 
@@ -323,7 +327,11 @@ pub fn tx(
     }
 
     use packet::Packet;
-    let buf = frame.to_buffer();
+    let buf_vec = frame.to_buffer().to_vec();
+    let sum = util::calc_checksum(buf_vec.as_slice(), buf_vec.len(), 0);
+    let mut buf = Buffer::from_vec(buf_vec);
+    IcmpFrame::write_checksum(&mut buf, sum);
+
     interface.tx(protocol::ProtocolType::Icmp, buf, dst)
 }
 

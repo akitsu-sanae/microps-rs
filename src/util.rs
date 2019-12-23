@@ -1,4 +1,3 @@
-use crate::buffer::Buffer;
 use std::error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,13 +34,18 @@ pub fn ntohs(n: u16) -> u16 {
     u16::from_be(n)
 }
 
-pub fn calc_checksum(mut data: Buffer, init: u32) -> u16 {
+pub fn calc_checksum(data: &[u8], len: usize, init: u32) -> u16 {
+    use std::slice;
+    let data_u16: &[u16] = unsafe { slice::from_raw_parts(data.as_ptr() as *const u16, len / 2) };
+    let mut index = 0;
+
     let mut sum = init;
-    while data.0.len() >= 2 {
-        sum += data.pop_u16("u16").unwrap() as u32;
+    while index + 1 < len {
+        sum += data_u16[index / 2] as u32;
+        index += 2;
     }
-    if !data.0.is_empty() {
-        sum += data.pop_u8("u8").unwrap() as u32;
+    if index + 1 != len {
+        sum += data[index - 1] as u32;
     }
     sum = (sum & 0xffff) + (sum >> 16);
     sum = (sum & 0xffff) + (sum >> 16);

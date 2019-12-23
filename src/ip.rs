@@ -41,6 +41,9 @@ impl Addr {
             .map(|arr| Self(arr.into_inner().unwrap()))
             .or_else(|err| Err(util::RuntimeError::new(format!("{}", err))))
     }
+    pub fn as_u32(&self) -> u32 {
+        unsafe { ::std::mem::transmute(*self) }
+    }
 
     pub fn apply_mask(&self, mask: &Addr) -> Addr {
         Addr([
@@ -139,14 +142,13 @@ fn forward_process(mut dgram: dgram::Dgram, interface: &Interface) -> Result<(),
     }
     dgram.time_to_live -= 1;
     let sum = dgram.checksum;
-    dgram.checksum = util::calc_checksum(
-        dgram
-            .payload
-            .head(((dgram.version_header_length & 0x0f) as usize) << 2),
-        (u16::max_value() - dgram.checksum) as u32,
-    );
+    let len = ((dgram.version_header_length & 0x0f) as usize) << 2;
+    let buf_vec = dgram.clone().to_buffer().to_vec();
+    let sum = util::calc_checksum(buf_vec.as_slice(), len, (u16::max_value() - sum) as u32);
+    let mut buf = Buffer::from_vec(buf_vec);
+    dgram::Dgram::write_checksum(&mut buf, sum);
     let ret = route.interface.tx_device(
-        dgram.clone().to_buffer(), // TODO: remove clone if possible
+        buf,
         &match route.nexthop {
             Some(next) => Some(next),
             None => Some(dgram.src),

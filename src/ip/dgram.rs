@@ -5,7 +5,7 @@ pub const HEADER_MIN_SIZE: usize = 20;
 pub const HEADER_MAX_SIZE: usize = 60;
 pub const PAYLOAD_MAX_SIZE: usize = 65535 - HEADER_MIN_SIZE;
 
-pub const HEADER_LEN: u8 = 1 + 1 + 2 + 2 + 2 + 1 + 1 + 2 + 4 + 4 + 1;
+pub const HEADER_LEN: u8 = 20;
 
 #[derive(Debug, Clone)]
 pub struct Dgram {
@@ -35,6 +35,10 @@ impl Dgram {
         eprintln!("src: {}", self.src);
         eprintln!("dst: {}", self.dst);
         eprintln!("payload: {}", self.payload);
+    }
+
+    pub fn write_checksum(buf: &mut buffer::Buffer, sum: u16) {
+        buf.write_u16(10, sum);
     }
 }
 

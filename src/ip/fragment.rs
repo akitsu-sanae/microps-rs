@@ -112,20 +112,16 @@ pub fn process(dgram: ip::dgram::Dgram) -> Result<Fragment, Box<dyn Error>> {
 fn set_mask(mask: &mut Vec<u32>, offset: usize, mut len: usize) {
     let so = offset / 32;
     let sb = offset % 32;
-    let bl = if len > 32 - sb {
-        32 - sb
-    } else {
-        len
-    };
+    let bl = if len > 32 - sb { 32 - sb } else { len };
     mask[so] |= (0xffffffff >> (32 - bl)) << sb;
     len -= bl;
-    for idx in so .. so+len/32 {
+    for idx in so..so + len / 32 {
         mask[idx + 1] = 0xffffffff;
     }
-    let i = so+len/32;
-    len -= 32 * (len/32);
+    let i = so + len / 32;
+    len -= 32 * (len / 32);
     if len != 0 {
-        mask[i+1] |= 0xffffffff >> (32 - len);
+        mask[i + 1] |= 0xffffffff >> (32 - len);
     }
 }
 
@@ -137,17 +133,19 @@ fn check_mask(mask: &Vec<u32>, offset: usize, mut data_len: usize) -> bool {
     } else {
         data_len
     };
-    if (mask[offset / 32] & ((0xffffffff >> (32 - bl)) << sb)) ^ ((0xffffffff >> (32 - bl)) << sb) != 0 {
+    if (mask[offset / 32] & ((0xffffffff >> (32 - bl)) << sb)) ^ ((0xffffffff >> (32 - bl)) << sb)
+        != 0
+    {
         return false;
     }
     data_len -= bl;
-    for idx in so .. so+data_len/32 {
+    for idx in so..so + data_len / 32 {
         if mask[idx + 1] ^ 0xffffffff != 0 {
             return false;
         }
     }
-    let i = so+data_len/32;
-    data_len -= 32 * (data_len/32);
+    let i = so + data_len / 32;
+    data_len -= 32 * (data_len / 32);
     if data_len != 0 {
         if (mask[i + 1] & (0xffffffff >> (32 - data_len))) ^ (0xffffffff >> (32 - data_len)) != 0 {
             return false;
@@ -155,5 +153,3 @@ fn check_mask(mask: &Vec<u32>, offset: usize, mut data_len: usize) -> bool {
     }
     true
 }
-
-

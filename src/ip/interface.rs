@@ -62,8 +62,8 @@ impl Interface {
             match route::lookup(None, dst.clone()) {
                 None => {
                     eprintln!("ip no route to host"); // TODO
-                    return Ok(())
-                },
+                    return Ok(());
+                }
                 Some(route) => {
                     let nexthop = Some(route.nexthop.unwrap_or(dst.clone()));
                     let interface = route.interface;
@@ -104,7 +104,7 @@ impl Interface {
         id: u16,
         offset: u16,
     ) -> Result<(), Box<dyn Error>> {
-        let mut dgram = dgram::Dgram {
+        let dgram = dgram::Dgram {
             version_header_length: (ip::VERSION << 4) | (ip::dgram::HEADER_LEN >> 2),
             type_of_service: 0,
             len: ip::dgram::HEADER_LEN as u16 + buf.0.len() as u16,
@@ -121,12 +121,14 @@ impl Interface {
                 }
             },
             dst: dst,
-            payload: buffer::Buffer::empty(),
+            payload: buf,
         };
         use packet::Packet;
-        dgram.checksum = util::calc_checksum(dgram.clone().to_buffer(), 0); // TODO: remove `clone` if possible
-        dgram.payload = buf;
-        self.tx_device(dgram.to_buffer(), &nexthop)
+        let buf_vec = dgram.to_buffer().to_vec();
+        let sum = util::calc_checksum(buf_vec.as_slice(), ip::dgram::HEADER_LEN as usize, 0);
+        let mut buf = buffer::Buffer::from_vec(buf_vec);
+        dgram::Dgram::write_checksum(&mut buf, sum);
+        self.tx_device(buf, &nexthop)
     }
 
     pub fn tx_device(

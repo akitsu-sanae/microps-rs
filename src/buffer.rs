@@ -99,7 +99,10 @@ impl Buffer {
             self.0.append(&mut buf.0);
         }
     }
-
+    pub fn write_u16(&mut self, pos: usize, v: u16) {
+        self.0[pos] = v as u8;
+        self.0[pos + 1] = (v >> 8) as u8;
+    }
     pub fn pop_mac_addr(&mut self, label: &str) -> Result<ethernet::MacAddr, Box<dyn Error>> {
         if ethernet::ADDR_LEN <= self.0.len() {
             let buf = self.0.split_off(ethernet::ADDR_LEN);

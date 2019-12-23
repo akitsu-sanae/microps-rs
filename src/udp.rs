@@ -32,16 +32,17 @@ pub struct Socket {
 }
 
 impl Socket {
-    pub fn bind(
-        &mut self,
-        peer_addr: ip::Addr,
-        peer_port: u16,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn bind(&mut self, peer_addr: ip::Addr, peer_port: u16) -> Result<(), Box<dyn Error>> {
         let mut cb_table = CB_TABLE.lock().unwrap();
         let ref mut cb = cb_table.get_mut(&self.id).unwrap();
         let interface = match ip::interface::by_addr(peer_addr) {
-                Some(interface) => interface,
-                None => return Err(util::RuntimeError::new(format!("invalid addr: {}", peer_addr))),
+            Some(interface) => interface,
+            None => {
+                return Err(util::RuntimeError::new(format!(
+                    "invalid addr: {}",
+                    peer_addr
+                )))
+            }
         };
         cb.interface = Some(interface);
         cb.port = peer_port;
@@ -159,17 +160,26 @@ pub fn open() -> Result<Socket, Box<dyn Error>> {
 pub fn rx(
     buf: buffer::Buffer,
     src: &ip::Addr,
-    _dst: &ip::Addr,
+    dst: &ip::Addr,
     interface: &Interface,
 ) -> Result<(), Box<dyn Error>> {
-    let pseudo = 0; // TODO
-    if util::calc_checksum(buffer::Buffer::empty(), pseudo) != 0 && false {
-        // TODO
+    let mut pseudo: u32 = 0;
+    let src_u32 = src.as_u32();
+    let dst_u32 = dst.as_u32();
+    pseudo += src_u32 >> 16;
+    pseudo += src_u32 & 0xffff;
+    pseudo += dst_u32 >> 16;
+    pseudo += dst_u32 & 0xffff;
+    pseudo += protocol::ProtocolType::Udp as u32; // TODO: chagne to network order
+    pseudo += buf.0.len() as u32; // TODO: change to network order
+
+    let buf_vec = buf.to_vec();
+    if util::calc_checksum(buf_vec.as_slice(), buf_vec.len(), pseudo) != 0 && false {
         return Err(util::RuntimeError::new(format!("incorrect checksum")));
     }
 
     use crate::packet::Packet;
-    let packet = packet::Packet::from_buffer(buf)?;
+    let packet = packet::Packet::from_buffer(buffer::Buffer::from_vec(buf_vec))?;
 
     if cfg!(debug_assertions) {
         eprintln!(">>> udp_rx <<<");
